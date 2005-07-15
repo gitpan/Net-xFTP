@@ -1,0 +1,50 @@
+Net-xFTP
+
+Net::xFTP is a wrapper class to combine common functions of Net::FTP and 
+Net::SFTP into a single set of functions allowing one to switch seemlessly 
+between the two without having to make non-trivial code changes.  Only   
+functionality common to both protocols has been implemented here with the 
+intent and invitation to add more functions and features and mayby other 
+*FTP-ish modules in the future.
+
+This module is a new work in progress - patches and suggestions are most 
+welcome!  The methods have been tested and seem to work properly for normal 
+cases, but plans are underway to add additional functionality, such as 
+file-handles to the get and put functions and a remote-file to remote-file 
+copy / move.  Work is also underway to incorporate Net::xFTP into ptkftp 
+which will essentially wrap a Perl/Tk gui around Net::xFTP.
+
+PURPOSE
+
+I created this module when I had developed several web application 
+programs which FTP'd data to and from a central server via Net::FTP.  
+The client changed to a new remote server that required Net::SFTP.  Faced 
+with rewriting these programs without changing functionality (since for 
+some reason Net::FTP and Net::SFTP use slightly different methods and 
+conventions).  I decided instead to simply create a common module that 
+would use the same method calls to do the same things and allow me to 
+specify the protocol in a single place.  I also am the author of I<ptkftp>, 
+a Perl/Tk graphical user-interface to Net::FTP and Net::SFTP.  I now 
+intend to rewrite it to use Net::xFTP and greatly reduce and simplify 
+the code for that application.
+
+Hopelfully others will find this module useful.  Patches adding needed 
+functionality are welcome.  I know this is bare-bones (now), but I am 
+currently very busy with other (mostly billable) projects. :)
+
+INSTALLATION
+
+To install this module, run the following commands:
+
+    perl Makefile.PL
+    make
+    make test
+    make install
+
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2005 Jim Turner
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
