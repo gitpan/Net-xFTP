@@ -2,4 +2,14 @@ Revision history for Net-xFTP
 
 0.01    2005/07/15
         First version, released.
-
+0.02    2005/07/15
+        Removed debugging print stmts (already commented out) and fixed small 
+        bug involving Cwd::cwd (changed to Cwd::getcwd).  Also removed 
+        extranious "total" line at top of long directory listings.
+0.10    2005/07/19
+        Added copy, move methods.  Added filehandle option for the local
+        file argument for get and put (now works like Net::FTP).
+        Fixed several minor bugs.
+0.11    2005/07/20
+        Mostly doc mods.  Added BlockSize option handling and defaulted it 
+        to 10240 (FTP's default).  
