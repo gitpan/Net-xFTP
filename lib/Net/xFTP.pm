@@ -24,7 +24,7 @@ eval 'use Net::SFTP::Constants qw(SSH2_FXF_WRITE SSH2_FXF_CREAT SSH2_FXF_TRUNC);
 #die "..Must have either Net::FTP and or Net::SFTP!"
 #		unless ($haveFTP || $haveSFTP);
 
-our $VERSION = '0.11';
+our $VERSION = '0.13';
 
 {
 	no warnings 'redefine';
@@ -210,7 +210,7 @@ sub new
 		$ENV{HOME} = $xftp_args{home}  if ($xftp_args{home});
 		eval { $xftp->{xftp} = Net::SFTP->new($host, %args, warn => \&sftpWarnings); };
 		$xftp->{xftp_lastmsg} = $@  if ($@);
-		$ENV{HOME} = $saveEnvHome;
+		$ENV{HOME} = $saveEnvHome || '';
 		if ($xftp->{xftp})
 		{
 			my $cwd;
@@ -357,7 +357,12 @@ sub ls
 		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^\/#);
 		my @dirHash;
 		eval { @dirHash = $self->{xftp}->ls($realpath) };
-		return  if ($@);
+		if ($@)
+		{
+			$self->{xftp_lastmsg} = $@;
+			my $err = $self->{xftp}->status;
+			return  if ($err);
+		}
 		shift (@dirHash)  if ($dirHash[0]->{longname} =~ /^total \d/);  #REMOVE TOTAL LINE!
 		my $t;
 		@dirlist = ();
@@ -448,13 +453,21 @@ sub dir
 		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^\/#);
 		my @dirHash;
 		eval { @dirHash = $self->{xftp}->ls($realpath) };
-		return  if ($@);
+		#return  if ($@);
+		if ($@)
+		{
+			$self->{xftp_lastmsg} = $@;
+			my $err = $self->{xftp}->status;
+			return  if ($err);
+		}
 		shift (@dirHash)  if ($dirHash[0]->{longname} =~ /^total \d/);  #REMOVE TOTAL LINE!
 		my $t;
 		@dirlist = ();
-		for (my $i=0;$i<=$#dirHash;$i++)
+		#for (my $i=0;$i<=$#dirHash;$i++)
+		foreach my $i (sort { $a->{filename} cmp $b->{filename} } @dirHash)
 		{
-			$t = $dirHash[$i]->{longname};
+			#$t = $dirHash[$i]->{longname};
+			$t = $i->{longname};
 			next  if ($t =~ /\d \.\.$/ && $path eq '/');
 			next  if (!$showall && $t =~ /\d \.[^\.]\S*$/);
 			push (@dirlist, $t);
@@ -614,7 +627,8 @@ sub get    #(Remote, => Local)
 				if ($@)
 				{
 					$self->{xftp_lastmsg} = $@;
-					return undef;
+					$ok = $self->{xftp}->status;
+					return $ok ? undef : 1;
 				}
 				else
 				{
@@ -706,9 +720,13 @@ sub put    #(LOCAL => REMOTE) SFTP returns OK=1 on SUCCESS.
 				eval { $self->{xftp}->do_write($remoteHandle, 0, $t) };
 				if ($@)
 				{
-					$self->{xftp_lastmsg} = "Put failed (". ($@||'write failed - Unknown reason')
-							. ')!';
-					return undef;
+					$self->{xftp_lastmsg} = $@;
+					$ok = $self->{xftp}->status;
+					return $ok ? undef : 1;
+				}
+				else
+				{
+					return 1;
 				}
 				$self->{xftp}->do_close($remoteHandle);
 				return 1;
@@ -923,8 +941,8 @@ sub size
 	}
 	elsif ($self->{pkg} =~ /Net::SFTP/ && $haveSFTP)
 	{
-print STDERR "-???- CWD undefined!\n"  unless (defined $self->{cwd});
-print STDERR "-???- path undefined!\n"  unless (defined $path);
+#print STDERR "-???- CWD undefined!\n"  unless (defined $self->{cwd});
+#print STDERR "-???- path undefined!\n"  unless (defined $path);
 		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
 		eval { $ok = $self->{xftp}->do_stat($path) };
 		unless (defined($ok) && $ok)
@@ -1014,7 +1032,7 @@ sub chmod
 		}
 		$attrs->perm($permissions);
 		eval { $ok = $self->{xftp}->do_setstat($path, $attrs) };
-print STDERR "-setstat: AT=".($@ ? $@ : 'NULL')."= ok=".(defined($ok) ? $ok : 'UNDEF')."=\n";
+#print STDERR "-setstat: AT=".($@ ? $@ : 'NULL')."= ok=".(defined($ok) ? $ok : 'UNDEF')."=\n";
 		if ($@ || !defined($ok))
 		{
 			$self->{xftp_lastmsg} = $@;
@@ -1465,7 +1483,7 @@ $ftp->{xftp}->method ( args )
 
 Example:
 
-print "-FTP size of file = ".$ftp->{xftp}->size('/pub/myfile').".\n"
+ print "-FTP size of file = ".$ftp->{xftp}->size('/pub/myfile').".\n"
 		if ($ftp->protocol() eq 'Net::FTP');
 
 =item sftpWarnings

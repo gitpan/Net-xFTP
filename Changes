@@ -13,3 +13,9 @@ Revision history for Net-xFTP
 0.11    2005/07/20
         Mostly doc mods.  Added BlockSize option handling and defaulted it 
         to 10240 (FTP's default).  
+0.12    2005/07/21
+        Remove some leftover "construction tape" (a couple of debug print 
+        statements.  Also fixed a buglet involving warnings from SFTP->get 
+        and put returning failure.
+0.13    2005/07/22
+        Fix sorting for SFTP->dir.
