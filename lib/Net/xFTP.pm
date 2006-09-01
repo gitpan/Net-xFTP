@@ -24,7 +24,9 @@ eval 'use Net::SFTP::Constants qw(SSH2_FXF_WRITE SSH2_FXF_CREAT SSH2_FXF_TRUNC);
 #die "..Must have either Net::FTP and or Net::SFTP!"
 #		unless ($haveFTP || $haveSFTP);
 
-our $VERSION = '0.13';
+our $VERSION = '0.16';
+our @permvec = ('---','--x','-w-','-wx','r--','r-x','rw-','rwx');
+
 
 {
 	no warnings 'redefine';
@@ -42,6 +44,29 @@ our $VERSION = '0.13';
 		elsif ($self->{pkg} =~ /Net::SFTP/ && $haveSFTP)
 		{
 			my $fullwd;
+			#NEXT 22 ADDED 20060815 TO FIX RELATIVE PATH CHANGES.
+			if ($cwd !~ m#^\/# && $self->{cwd} && $self->{cwd} !~ /^\./)
+			{
+				if ($self->{cwd} =~ m#\/$#)
+				{
+					$cwd = $self->{cwd} . $cwd;
+				}
+				else
+				{
+					$cwd = $self->{cwd} . '/' . $cwd;
+				}
+			}
+			elsif ($cwd eq '..')
+			{
+				$cwd = $self->{xftp}->do_realpath($self->{cwd});
+				chop($cwd)  if ($cwd =~ m#\/$#);
+				$cwd =~ s#\/[^\/]+$##;
+				$cwd ||= '/';
+			}
+			elsif ($cwd eq '.')
+			{
+				$cwd = $self->{xftp}->do_realpath($self->{cwd});
+			}
 			eval { $fullwd = $self->{xftp}->do_realpath($cwd) };
 			if ($fullwd)
 			{
@@ -65,8 +90,8 @@ our $VERSION = '0.13';
 		my @args = @_;
 		if (!$self->{pkg} || $self->{pkg} =~ /Net::SFTP/)
 		{
-			$args[0] = $self->{cwd} . '/' . $args[0]  unless ($args[0] =~ m#^\/#);
-			$args[1] = $self->{cwd} . '/' . $args[1]  unless ($args[1] =~ m#^\/#);
+			$args[0] = $self->{cwd} . '/' . $args[0]  unless ($args[0] =~ m#^(?:[a-zA-Z]\:|\/)#);
+			$args[1] = $self->{cwd} . '/' . $args[1]  unless ($args[1] =~ m#^(?:[a-zA-Z]\:|\/)#);
 		}
 		if ($self->isadir($args[1]))
 		{
@@ -190,6 +215,8 @@ sub new
 	$xftp->{xftp_lastmsg} = '';
 	$xftp->{cwd} = '.';
 	$xftp->{BlockSize} = $args{BlockSize} || 10240;
+	$xftp->{bummer} = ($^O =~ /Win/) ? 1 : 0;
+
 	foreach my $i (keys %args)
 	{
 		if ($i =~ s/^xftp_//)   #EXTRACT OUT OUR SPECIAL ARGS ("xftp_*")
@@ -354,7 +381,7 @@ sub ls
 		my $realpath;
 		eval { $realpath = $self->{xftp}->do_realpath($path||$self->{cwd}||'.') };
 		chomp $realpath;
-		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^\/#);
+		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^(?:[a-zA-Z]\:|\/)#);
 		my @dirHash;
 		eval { @dirHash = $self->{xftp}->ls($realpath) };
 		if ($@)
@@ -383,7 +410,7 @@ sub ls
 			chop $realpath  if ($realpath =~ m#\/$#);
 			$realpath =~ s#\/[^\/]+##;
 		}
-		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^\/#);
+		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^(?:[a-zA-Z]\:|\/)#);
 		my $t;
 		@dirlist = ();
 		if (opendir D, $realpath)
@@ -450,7 +477,7 @@ sub dir
 		my $realpath;
 		eval { $realpath = $self->{xftp}->do_realpath($path||$self->{cwd}||'.') };
 		chomp $realpath;
-		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^\/#);
+		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^(?:[a-zA-Z]\:|\/)#);
 		my @dirHash;
 		eval { @dirHash = $self->{xftp}->ls($realpath) };
 		#return  if ($@);
@@ -482,25 +509,77 @@ sub dir
 			chop $realpath  if ($realpath =~ m#\/$#);
 			$realpath =~ s#\/[^\/]+##;
 		}
-		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^\/#);
+		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^(?:[a-zA-Z]\:|\/)#);
 		my $t;
-		my @d = $showall ? `ls -la $realpath` : `ls -la $realpath`;
-		if (@d)
+		if ($self->{bummer})
 		{
-			shift @d  if ($d[0] =~ /^total \d/);   #REMOVE "TOTAL" LINE.
-			foreach my $t (@d)
+			if (opendir D, $realpath)
 			{
-				chomp $t;
-				next  if ($t =~ /\d \.\.$/ && $path eq '/');
-				next  if (!$showall && $t =~ /\d \.[^\.]\S*$/);
-				push (@dirlist, $t);
+				$realpath .= '/'  unless ($realpath =~ m#[\:\/]$#);
+				my (@sb, @tm, $permval, @permdigits, $permstr);
+				while ($t = readdir(D))
+				{
+					next  if ($t =~ /^total \d/);
+					next  if ($t eq '..' && $path eq '/');
+					next  if (!$showall && $t =~ /^\.[^\.]/);
+					@sb = stat("$realpath$t");
+					@tm = localtime($sb[9]);
+					$permval = sprintf('%04o', $sb[2]&07777);
+					@permdigits = split(//, $permval);
+
+					$permstr = (-d "$realpath$t") ? 'd' : '-';
+					$_ = $permvec[$permdigits[1]];
+					if ($permdigits[0] >= 4)
+					{
+						s/\-/S/;
+						s/x/s/;
+					}
+					$permstr .= $_;
+					$_ = $permvec[$permdigits[2]];
+					if ($permvec[$permdigits[0]] =~ /w/)
+					{
+						s/\-/S/;
+						s/x/s/;
+					}
+					$permstr .= $_;
+					$_ = $permvec[$permdigits[3]];
+					if ($permvec[$permdigits[0]] =~ /x/)
+					{
+						s/\-/S/;
+						s/x/s/;
+					}
+					$permstr .= $_;
+
+					push (@dirlist, sprintf "%s\x02%10s %2d %8s %8s %10d %4d-%2.2d-%2.2d %2.2d:%2.2d %s\n", 
+							$t, $permstr, $sb[3], $sb[4], $sb[5], $sb[7], $tm[5]+1900, $tm[4]+1, $tm[3], $tm[2], $tm[1], $t);
+				}
+				@dirlist = sort(@dirlist);
+				for (my $i=0;$i<=$#dirlist;$i++)
+				{
+					$dirlist[$i] =~ s/^[^\x02]*\x02//s;
+				}
 			}
-			
 		}
-		elsif ($@)
+		else
 		{
-			$self->{xftp_lastmsg} = $@;
-			return;
+			my @d = $showall ? `ls -la $realpath` : `ls -l $realpath`;
+			if (@d)
+			{
+				shift @d  if ($d[0] =~ /^total \d/);   #REMOVE "TOTAL" LINE.
+				foreach my $t (@d)
+				{
+					chomp $t;
+					next  if ($t =~ /\d \.\.$/ && $path eq '/');
+					next  if (!$showall && $t =~ /\d \.[^\.]\S*$/);
+					push (@dirlist, $t);
+				}
+			
+			}
+			elsif ($@)
+			{
+				$self->{xftp_lastmsg} = $@;
+				return;
+			}
 		}
 	}
 	else
@@ -543,7 +622,7 @@ sub get    #(Remote, => Local)
 	my @args = @_;
 	if (!$self->{pkg} or $self->{pkg} =~ /Net::SFTP/)
 	{
-		$args[0] = $self->{cwd} . '/' . $args[0]  unless ($args[0] =~ m#^\/#);
+		$args[0] = $self->{cwd} . '/' . $args[0]  unless ($args[0] =~ m#^(?:[a-zA-Z]\:|\/)#);
 		unless (@args >= 2)
 		{
 			if (ref(\$args[1]) eq 'GLOB')
@@ -658,13 +737,13 @@ sub put    #(LOCAL => REMOTE) SFTP returns OK=1 on SUCCESS.
 	}
 	if ($self->{pkg} =~ /Net::SFTP/)
 	{
-		$args[1] = $self->{cwd} . '/' . $args[1]  unless ($args[1] =~ m#^\/#);
+		$args[1] = $self->{cwd} . '/' . $args[1]  unless ($args[1] =~ m#^(?:[a-zA-Z]\:|\/)#);
 	}
 
 	my $ok;
 	if (!$self->{pkg})
 	{
-		$args[1] = $self->{cwd} . '/' . $args[1]  unless ($args[1] =~ m#^\/#);
+		$args[1] = $self->{cwd} . '/' . $args[1]  unless ($args[1] =~ m#^(?:[a-zA-Z]\:|\/)#);
 		if (ref(\$args[0]) eq 'GLOB')
 		{
 			my $buff;
@@ -760,14 +839,14 @@ sub delete       #RETURNED OK=2 WHEN LAST FAILED.
 	}
 	elsif ($self->{pkg} =~ /Net::SFTP/ && $haveSFTP)
 	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		eval { $ok = $self->{xftp}->do_remove($path) };
 		$self->{xftp_lastmsg} = $@  if ($@);
 		return $@ ? undef : 1;
 	}
 	elsif (!$self->{pkg})
 	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		return  unless ($path);
 		#!!!!return ($_ == 1) ? 1 : undef;
 		return unlink($path) ? 1 : undef;
@@ -791,16 +870,16 @@ sub rename
 	}
 	elsif ($self->{pkg} =~ /Net::SFTP/ && $haveSFTP)
 	{
-		$oldfile = $self->{cwd} . '/' . $oldfile  unless ($oldfile =~ m#^\/#);
-		$newfile = $self->{cwd} . '/' . $newfile  unless ($newfile =~ m#^\/#);
+		$oldfile = $self->{cwd} . '/' . $oldfile  unless ($oldfile =~ m#^(?:[a-zA-Z]\:|\/)#);
+		$newfile = $self->{cwd} . '/' . $newfile  unless ($newfile =~ m#^(?:[a-zA-Z]\:|\/)#);
 		eval { $ok = $self->{xftp}->do_rename($oldfile, $newfile) };
 		$self->{xftp_lastmsg} = $@  if ($@);
 		return $@ ? undef : 1;
 	}
 	elsif (!$self->{pkg})
 	{
-		$oldfile = $self->{cwd} . '/' . $oldfile  unless ($oldfile =~ m#^\/#);
-		$newfile = $self->{cwd} . '/' . $newfile  unless ($newfile =~ m#^\/#);
+		$oldfile = $self->{cwd} . '/' . $oldfile  unless ($oldfile =~ m#^(?:[a-zA-Z]\:|\/)#);
+		$newfile = $self->{cwd} . '/' . $newfile  unless ($newfile =~ m#^(?:[a-zA-Z]\:|\/)#);
 		$ok = rename($oldfile, $newfile);
 		unless ($ok)
 		{
@@ -829,7 +908,7 @@ sub mkdir
 	{
 		my $orgPath = $path;
 		my $didRecursion = 0;
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		while ($path)
 		{
 			eval { $ok = $self->{xftp}->do_mkdir($path, Net::SFTP::Attributes->new()) };
@@ -848,7 +927,7 @@ sub mkdir
 	{
 		my $orgPath = $path;
 		my $didRecursion = 0;
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		while ($path)
 		{
 			$ok = mkdir $path;
@@ -882,14 +961,14 @@ sub rmdir
 	}
 	elsif ($self->{pkg} =~ /Net::SFTP/ && $haveSFTP)
 	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		eval { $ok = $self->{xftp}->do_rmdir($path) };
 		$self->{xftp_lastmsg} = $@  if ($@);
 		return $@ ? undef : 1;
 	}
 	elsif (!$self->{pkg})
 	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		return undef  unless ($path);
 		$ok  = rmdir $path;
 		unless ($ok)
@@ -941,9 +1020,7 @@ sub size
 	}
 	elsif ($self->{pkg} =~ /Net::SFTP/ && $haveSFTP)
 	{
-#print STDERR "-???- CWD undefined!\n"  unless (defined $self->{cwd});
-#print STDERR "-???- path undefined!\n"  unless (defined $path);
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		eval { $ok = $self->{xftp}->do_stat($path) };
 		unless (defined($ok) && $ok)
 		{
@@ -954,7 +1031,7 @@ sub size
 	}
 	elsif (!$self->{pkg})
 	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		eval { (undef, undef, undef, undef, undef, undef, undef, $ok) = stat($path) };
 		return $@ ? undef : $ok;
 	}
@@ -980,7 +1057,7 @@ sub isadir
 	}
 	elsif ($self->{pkg} =~ /Net::SFTP/ && $haveSFTP)
 	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		eval { $ok = $self->{xftp}->do_opendir($path) };
 		if (defined($ok) && $ok)
 		{
@@ -991,7 +1068,7 @@ sub isadir
 	}
 	elsif (!$self->{pkg})
 	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		return (-d $path) ? 1 : 0;
 	}
 	return;
@@ -1017,7 +1094,7 @@ sub chmod
 	}
 	elsif ($self->{pkg} =~ /Net::SFTP/ && $haveSFTP)
 	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		eval { $attrs = $self->{xftp}->do_stat($path) };
 		unless (defined($attrs) && $attrs)
 		{
@@ -1042,7 +1119,7 @@ sub chmod
 	}
 	elsif (!$self->{pkg})
 	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^\/#);
+		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#);
 		eval "\$permissions = 0$permissions";
 		if ($@)
 		{
