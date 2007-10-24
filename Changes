@@ -24,3 +24,5 @@ Revision history for Net-xFTP
 0.16    Fixed local file list when running under Windows (was trying to call
         ls which does not exist in Windows - we now emulate it, except can't 
         get user/group name.  I'm open to ideas on this.
+0.17    Fixed bug that caused warning when ftp::ls() returns undef at lines 
+        360, 396, 458, and 495.  Also optimized many regices w/ \o.
