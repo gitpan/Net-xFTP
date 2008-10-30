@@ -1,11 +1,11 @@
 Net-xFTP
 
-Net::xFTP is a wrapper class to combine common functions of Net::FTP and 
-Net::SFTP into a single set of functions allowing one to switch seemlessly 
-between the two without having to make non-trivial code changes.  Only   
-functionality common to both protocols has been implemented here with the 
-intent and invitation to add more functions and features and maybe other 
-*FTP-ish modules in the future.
+Net::xFTP is a wrapper class to combine common functions of Net::FTP, 
+Net::SSH2, and Net::SFTP into a single set of functions allowing one to 
+switch seemlessly between the two without having to make non-trivial 
+code changes.  Only functionality common to both protocols has been 
+implemented here with the intent and invitation to add more functions 
+and features and maybe other *FTP-ish modules in the future.
 
 This module is a new work in progress - patches and suggestions are most 
 welcome!  The methods have been tested and seem to work properly for normal 
@@ -127,7 +127,7 @@ To install this module, run the following commands:
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2005, 2006, 2007 Jim Turner
+Copyright (C) 2005, 2006, 2007, 2008 Jim Turner
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself.

@@ -26,3 +26,4 @@ Revision history for Net-xFTP
         get user/group name.  I'm open to ideas on this.
 0.17    Fixed bug that caused warning when ftp::ls() returns undef at lines 
         360, 396, 458, and 495.  Also optimized many regices w/ \o.
+0.20    Added support for Net::SSH2 and made compatable with Windows.
