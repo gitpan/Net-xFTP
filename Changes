@@ -27,3 +27,10 @@ Revision history for Net-xFTP
 0.17    Fixed bug that caused warning when ftp::ls() returns undef at lines 
         360, 396, 458, and 495.  Also optimized many regices w/ \o.
 0.20    Added support for Net::SSH2 and made compatable with Windows.
+0.21    Added "mdtm" function to return a file's modification time.  Also fixed 
+        bug in the "size" function for SSH2 protocol.  Also fixed bug that 
+        caused "ls" function to return hidden files reguardless of "showall" 
+        parameter value.
+0.3b1   Rewrote to modularize each supported protocol in it's own module file.
+        Added support for protocols:  Net::SFTP::Foreign, Net::OpenSSH,
+        and Net::FSP!

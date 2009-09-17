@@ -8,277 +8,45 @@ use strict;
 use vars qw(@ISA $VERSION %CONSTANTS);
 use Carp;
 use Cwd 'cwd';
-use Fcntl ':mode';
-use File::Copy;
-#use Net::SFTP::Constants qw(SSH2_FXF_WRITE SSH2_FXF_CREAT SSH2_FXF_TRUNC);
+#x use Fcntl ':mode';
+#x use File::Copy;
 
-#use Net::FTP;
-#use Net::SFTP;
-our $haveFTP = 0;
-our $haveSFTP = 0;
-our $haveSFTPConstants = 0;
-our $haveSSH2 = 0;
+my @supported_mods = (qw(ftp sftp ssh2 local foreign fsp));
+my %haveit;
+my  $haveSFTPConstants = 0;
+
+foreach my $imod (@supported_mods)
+{
+	$haveit{$imod} = 0;
+}
+
 my $bummer = ($^O =~ /Win/o) ? 1 : 0;
 
-eval 'use Net::FTP; $haveFTP = 1; 1';
-eval 'use Net::SFTP; $haveSFTP = 1; 1';
+eval 'use Net::FTP; $haveit{"ftp"} = 1; 1';
+eval 'use Net::SFTP; $haveit{"sftp"} = 1; 1';
 eval 'use Net::SFTP::Constants qw(SSH2_FXF_WRITE SSH2_FXF_CREAT SSH2_FXF_TRUNC); $haveSFTPConstants = 1; 1';
-eval 'use Net::SSH2; use Net::SSH2::SFTP; $haveSSH2 = 1; 1';
+eval 'use Net::SSH2; use Net::SSH2::SFTP; $haveit{"ssh2"} = 1; 1';
+eval 'use Net::SFTP::Foreign; $haveit{"foreign"} = 1; 1';
+eval 'use Net::OpenSSH; use IO::Pty; $haveit{"openssh"} = 1; 1';
+eval 'use Net::FSP; $haveit{"fsp"} = 1; 1';
 
-#die "..Must have either Net::FTP and or Net::SFTP!"
-#		unless ($haveFTP || $haveSFTP);
-
-our $VERSION = '0.20';
-our @permvec = ('---','--x','-w-','-wx','r--','r-x','rw-','rwx');
-
-
-{
-	no warnings 'redefine';
-	sub cwd  #SET THE "CURRENT" DIRECTORY.
-	{
-		my $self = shift;
-		my $cwd = shift || '/';
-
-		my $ok;
-		if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-		{
-			$ok = $self->{xftp}->cwd($cwd);
-			$self->{cwd} = $cwd  if ($ok);
-		}
-		elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-		{		
-			$ok = $self->{sshsftp}->realpath($cwd);
-			$self->{cwd} = $ok  if ($ok);
-		}
-		elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-		{
-			my $fullwd;
-			#NEXT 22 ADDED 20060815 TO FIX RELATIVE PATH CHANGES.
-			if ($cwd !~ m#^\/# && $self->{cwd} && $self->{cwd} !~ /^\./o)
-			{
-				if ($self->{cwd} =~ m#\/$#o)
-				{
-					$cwd = $self->{cwd} . $cwd;
-				}
-				else
-				{
-					$cwd = $self->{cwd} . '/' . $cwd;
-				}
-			}
-			elsif ($cwd eq '..')
-			{
-				$cwd = $self->{xftp}->do_realpath($self->{cwd});
-				chop($cwd)  if ($cwd =~ m#\/$#o);
-				$cwd =~ s#\/[^\/]+$##o;
-				$cwd ||= '/';
-			}
-			elsif ($cwd eq '.')
-			{
-				$cwd = $self->{xftp}->do_realpath($self->{cwd});
-			}
-			eval { $fullwd = $self->{xftp}->do_realpath($cwd) };
-			if ($fullwd)
-			{
-				$self->{cwd} = $fullwd;
-				$ok = 1;
-			}
-		}
-		elsif (!$self->{pkg})
-		{
-			$self->{cwd} = $cwd;
-			$ok = 1;
-		}
-		return $ok ? 1 : undef;
-	}
-
-	sub copy
-	{
-		my $self = shift;
-
-		return undef  unless (@_ >= 2);
-		my @args = @_;
-		if (!$self->{pkg} || $self->{pkg} =~ /Net::S(?:FTP|SH2)/o)
-		{
-			for (my $i=0;$i<=1;$i++)
-			{
-				$args[$i] = $self->{cwd} . '/' . $args[$i]  unless ($args[$i] =~ m#^(?:[a-zA-Z]\:|\/)#o);
-			}
-		}
-		if ($self->isadir($args[1]))
-		{
-			my $filename = $1  if ($args[0] =~ m#([^\/]+)$#o);
-			$args[1] .= '/'  unless ($args[1] =~ m#\/$#o);
-			$args[1] .= $filename;
-		}
-
-		my $ok;
-		if (!$self->{pkg})
-		{
-			$ok = File::Copy::copy($args[0], $args[1]);
-			unless ($ok)
-			{
-				$self->{xftp_lastmsg} = $! || 'Local copy failed for unknown reasons';
-			}
-		}
-		elsif ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-		{
-			my ($tmp, $t);
-			my $fromHandle;
-			eval { $fromHandle = $self->{xftp}->retr($args[0]) };
-			unless ($fromHandle)
-			{
-				$self->{xftp_lastmsg} = "Copy failed (". ($@||'retr failed - Unknown reason')
-						. ')!';
-				return undef;
-			}
-			while ($fromHandle->read($tmp, $self->{BlockSize}))
-			{
-				$t .= $tmp;
-			}
-			$fromHandle->close();
-			my $toHandle;
-			eval { $toHandle = $self->{xftp}->stor($args[1]) };
-			unless ($toHandle)
-			{
-				$self->{xftp_lastmsg} = "Copy failed (". ($@||'stor failed - Unknown reason')
-						. ')!';
-				return undef;
-			}
-			eval { $toHandle->write($t, length($t)) };
-			if ($@)
-			{
-				$self->{xftp_lastmsg} = "Copy failed (". ($@||'write failed - Unknown reason')
-						. ')!';
-				return undef;
-			}
-			$toHandle->close();
-			$ok = 1;
-		}
-		elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-		{
-			my ($tmp, $t, $bytecnt);
-			my $fromHandle;
-			eval { $fromHandle = $self->{sshsftp}->open($args[0], 0) };
-			if ($fromHandle)
-			{
-				my $err;
-				$t = '';
-				my $offset = 0;
-				while (1)
-				{
-					$bytecnt = $fromHandle->read($tmp, $self->{BlockSize});
-					last  unless (defined($bytecnt) && $bytecnt > 0);
-					$t .= $tmp;
-					$offset += $bytecnt;
-					$fromHandle->seek($offset);
-				}
-				return 1  if ($offset);
-				$self->{xftp_lastmsg} = "copy:open($args[0], 0):Could not get data into filehandle("
-						.join(' ', $self->{sshsftp}->error()).")!";
-				return undef;
-			}
-			else
-			{
-				$self->{xftp_lastmsg} = "copy:open($args[0], 0):Could not open remote file to copy from("
-						.join(' ', $self->{sshsftp}->error()).")!";
-				return undef;
-			}
-			my $toHandle;
-			eval
-			{
-				no strict 'subs';
-				my $openFlags = O_RDWR|O_CREAT|O_TRUNC;
-				$toHandle = $self->{sshsftp}->open($args[1], $openFlags);
-			};
-			if ($toHandle)
-			{
-				my $bytecnt = $toHandle->write($t);
-				return 1  if ($bytecnt);
-				$self->{xftp_lastmsg} = "copy:open($args[1]):Could not copy file("
-						.join(' ', $self->{sshsftp}->error()).")!";
-				return undef;
-			}
-			else
-			{
-				$self->{xftp_lastmsg} = $@ || 'Could not open remote handle for unknown reasons!';
-				return undef;
-			}
-		}
-		elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-		{
-			unless ($haveSFTPConstants)
-			{
-				$self->{xftp_lastmsg} = 
-					"Copy failed (You must install the Net::SFTP::Constants Perl module!)";
-				return undef;
-			}
-			my ($tmp, $t);
-			my $fromHandle;
-			eval { $fromHandle = $self->{xftp}->do_open($args[0], 0) };
-			unless ($fromHandle)
-			{
-				$self->{xftp_lastmsg} = "Copy failed (". ($@||'do_open1 failed - Unknown reason')
-						. ')!';
-				return undef;
-			}
-			my $offset = 0;
-			my $err;
-			while (1)
-			{
-				($tmp, $err) = $self->{xftp}->do_read($fromHandle, $offset, $self->{BlockSize});
-				last  if (defined $err);
-				$t .= $tmp;
-				$offset += $self->{BlockSize};
-			}
-			$self->{xftp}->do_close($fromHandle);
-			my $toHandle;
-			eval { no strict 'subs'; $toHandle = $self->{xftp}->do_open($args[1], 
-					SSH2_FXF_WRITE | SSH2_FXF_CREAT | SSH2_FXF_TRUNC) };
-			unless ($toHandle)
-			{
-				$self->{xftp_lastmsg} = "Copy failed (". ($@||'do_open2 failed - Unknown reason')
-						. ')!';
-				return undef;
-			}
-			eval { $self->{xftp}->do_write($toHandle, 0, $t) };
-			if ($@)
-			{
-				$self->{xftp_lastmsg} = "Copy failed (". ($@||'write failed - Unknown reason')
-						. ')!';
-				return undef;
-			}
-			$self->{xftp}->do_close($toHandle);
-			$ok = 1;
-		}
-		return $ok ? 1 : undef;
-	}
-
-	sub move
-	{
-		my $self = shift;
-
-		return undef  unless (@_ >= 2);
-		return ($self->copy(@_) && $self->delete($_[0])) ? 1 : undef;
-	}
-}
+our $VERSION = '0.3b1';
 
 sub new
 {
 	my $class = shift;
-	my $xftp = bless { }, $class;
 	$@ = '';
-	$xftp->{pkg}  = shift || 0;
-	$xftp->{pkg} =~ s/\s+//go;
-	$xftp->{pkg} = 'Net::' . $xftp->{pkg}  unless (!$xftp->{pkg} || $xftp->{pkg} =~ /^Net/o);
+	my $pkg  = shift || 0;
+	$pkg =~ s/\s+//go;
+	$pkg = 'Net::' . $pkg  unless (!$pkg || $pkg =~ /^Net/o);
+	$pkg = 'Net::SFTP::Foreign'  if ($pkg eq 'Net::Foreign');   #FIXUP.
 	my $host = shift;
 	my %args = @_;
+	my $xftp;
 	my %xftp_args;
-	$xftp->{xftp_lastmsg} = '';
-	$xftp->{cwd} = '.';
-	$xftp->{BlockSize} = $args{BlockSize} || 10240;
-	$xftp->{bummer} = ($^O =~ /Win/o) ? 1 : 0;
+	my ($i, $j, $t);
 
-	foreach my $i (keys %args)
+	foreach $i (keys %args)
 	{
 		if ($i =~ s/^xftp_//o)   #EXTRACT OUT OUR SPECIAL ARGS ("xftp_*")
 		{
@@ -287,157 +55,229 @@ sub new
 			delete $args{"xftp_$i"};
 		}
 	}
-	if ($xftp->{pkg} =~ /Net::SFTP/o && $haveSFTP)
+
+	if ($pkg =~ /Net::FTP/o && $haveit{'ftp'})
 	{
-		foreach my $i (keys %args)
+		foreach $i (keys %args)
 		{
-			delete $args{$i}  if ($i =~ /^ftp_/o)   #EXTRACT OUT OUR SPECIAL ARGS ("xftp_*")
-		}
-		delete($args{BlockSize})  if (defined $args{BlockSize});
-		my $saveEnvHome = $ENV{HOME};
-		$ENV{HOME} = $xftp_args{home}  if ($xftp_args{home});
-		eval { $xftp->{xftp} = Net::SFTP->new($host, %args, warn => \&sftpWarnings); };
-		$xftp->{xftp_lastmsg} = $@  if ($@);
-		$ENV{HOME} = $saveEnvHome || '';
-		if ($xftp->{xftp})
-		{
-			my $cwd;
-			eval { $cwd = $xftp->{xftp}->do_realpath('.') };
-			$xftp->{cwd} = $cwd  if ($cwd);
-			return $xftp;
-		}
-	}
-	elsif ($xftp->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		foreach my $i (keys %args)
-		{
-			delete $args{$i}  if ($i =~ /^sftp_/o)   #EXTRACT OUT OUR SPECIAL ARGS ("xftp_*")
-		}
-		$xftp->{xftp} = Net::FTP->new($host, %args);
-		unless (defined $xftp->{xftp})
-		{
-			$xftp->{xftp_lastmsg} = $@;
-			return;
-		}
-		if (defined $args{user})
-		{
-			$args{user} ||= 'anonymous';
-			$args{password} ||= 'anonymous@'  if ($args{user} eq 'anonymous');
-			my @loginargs = ($args{user});
-			push (@loginargs, $args{password})  if (defined $args{password});
-			push (@loginargs, $args{account})  if (defined $args{account});
-			if ($xftp->{xftp}->login(@loginargs))
+			foreach $j (@supported_mods)
 			{
-				my $cwd = $xftp->{xftp}->pwd();
-				$xftp->{cwd} = $cwd  if ($cwd);
-				return $xftp;
-			}
-		}
-		else
-		{
-			return $xftp  if ($xftp->{xftp}->login());
-		}
-		$@ ||= 'Invalid Password?';
-		return;
-	}
-	elsif ($xftp->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{	
-		foreach my $i (keys %args)
-		{
-			delete $args{$i}  if ($i =~ /^ftp_/o)   #EXTRACT OUT OUR SPECIAL ARGS ("xftp_*")
-		}
-		delete($args{BlockSize})  if (defined $args{BlockSize});
-		my $saveEnvHome = $ENV{HOME};
-#		$ENV{HOME} = $xftp_args{home}  if ($xftp_args{home});
-		$xftp->{xftp} = Net::SSH2->new();
-		unless (defined $xftp->{xftp})
-		{
-			$xftp->{xftp_lastmsg} = $@;
-			return;
-		}
-#		$ENV{HOME} = $saveEnvHome || '';
-		if ($xftp->{xftp})
-		{		
-			my $ok = $xftp->{xftp}->connect($host);		
-			unless ($ok)
-			{
-				$xftp->{xftp_lastmsg} = "new:connect($host):Could not connect to host("
-						.join(' ', $xftp->{xftp}->error()).")!";
-				return;
-			}
-			if (defined $args{user})
-			{
-				$args{user} ||= 'anonymous';
-				$args{password} ||= 'anonymous@'  if ($args{user} eq 'anonymous');
-				my @loginargs = ($args{user});
-				push (@loginargs, $args{password})  if (defined $args{password});
-				push (@loginargs, $args{account})  if (defined $args{account});
-				if ($xftp->{xftp}->auth_password(@loginargs))
+#				next  if ($j eq 'ftp');
+#				delete $args{$i}  if ($i =~ /^${j}_/o)   #REMOVE ALL ARGS NOT PREFIXED WITH 'ftp_'
+				if ($i =~ /^${j}_/o)
 				{
-					$xftp->{sshsftp} = $xftp->{xftp}->sftp();					
-					unless ($xftp->{sshsftp})					
+					if ($j eq 'ftp')
 					{
-						$xftp->{xftp_lastmsg} = 'new:auth_password:Could not authenticate, bad password('
-								.join(' ', $xftp->{xftp}->error()).')?';
-						return;						
+						($t = $i) =~ s/^${j}_//;
+						$args{$t} = $args{$i};
 					}
-					my $cwd = $xftp->{sshsftp}->realpath('.');
-					$xftp->{cwd} = $cwd  if ($cwd);					
-					return $xftp;
+					delete $args{$i};
 				}
 			}
-			else
-			{
-				if ($xftp->{xftp}->auth_keyboard())				
-				{				
-					$xftp->{sshsftp} = $xftp->{xftp}->sftp();					
-					unless ($xftp->{sshsftp})					
-					{
-						$xftp->{xftp_lastmsg} = 'new:sftp:Could not create sftp object('
-								.join(' ', $xftp->{xftp}->error()).")!";
-						return;						
-					}
-					my $cwd = $xftp->{xftp}->realpath('.');
-					$xftp->{cwd} = $cwd  if ($cwd);
-					return $xftp;
-				}
-			}
-			$@ ||= 'Invalid Password?';
+		}
+		eval { require "Net/xFTP_FTP.pm" };
+		if ($@)
+		{
+			warn "xFTP:Could not require Net::xFTP_FTP.pm module($@)!";
 			return;
 		}
+		$xftp = Net::xFTP::FTP::new("${class}::FTP", $pkg, $host, %args);
 	}
-	elsif (!$xftp->{pkg} || $xftp->{pkg} =~ /local/io)
+	elsif ($pkg =~ /Net::SFTP::Foreign/o && $haveit{'foreign'})
 	{
-		$xftp->{cwd} = Cwd::cwd();
-		$xftp->{pkg} = '';
-		$xftp->{xftp} = 1;
+		foreach $i (keys %args)
+		{
+			foreach $j (@supported_mods)
+			{
+				if ($i =~ /^${j}_/o)
+				{
+					if ($j eq 'foreign')
+					{
+						($t = $i) =~ s/^${j}_//;
+						$args{$t} = $args{$i};
+					}
+					delete $args{$i};
+				}
+			}
+		}
+		eval { require "Net/xFTP_Foreign.pm" };
+		if ($@)
+		{
+			warn "xFTP:Could not require Net::xFTP_Foreign.pm module($@)!";
+			return;
+		}
+		$xftp = Net::xFTP::Foreign::new("${class}::Foreign", $pkg, $host, %args);
+	}
+	elsif ($pkg =~ /Net::SSH2/o && $haveit{'ssh2'})
+	{	
+		foreach $i (keys %args)
+		{
+			foreach $j (@supported_mods)
+			{
+				if ($i =~ /^${j}_/o)
+				{
+					if ($j eq 'ssh2')
+					{
+						($t = $i) =~ s/^${j}_//;
+						$args{$t} = $args{$i};
+					}
+					delete $args{$i};
+				}
+			}
+		}
+		eval { require "Net/xFTP_SSH2.pm" };
+		if ($@)
+		{
+			warn "xFTP:Could not require Net::xFTP_SSH2.pm module($@)!";
+			return;
+		}
+		$xftp = Net::xFTP::SSH2::new("${class}::SSH2", $pkg, $host, %args);
+	}
+	elsif ($pkg =~ /Net::SFTP/o && $haveit{'sftp'})
+	{
+		foreach $i (keys %args)
+		{
+			foreach $j (@supported_mods)
+			{
+				if ($i =~ /^${j}_/o)
+				{
+					if ($j eq 'sftp')
+					{
+						($t = $i) =~ s/^${j}_//;
+						$args{$t} = $args{$i};
+					}
+					delete $args{$i};
+				}
+			}
+		}
+		eval { require "Net/xFTP_SFTP.pm" };
+		if ($@)
+		{
+			warn "xFTP:Could not require Net::xFTP_SFTP.pm module($@)!";
+			return;
+		}
+		$xftp = Net::xFTP::SFTP::new("${class}::SFTP", $pkg, $host, %args);
+		$xftp->{haveSFTPConstants} = $haveSFTPConstants  if ($xftp);
+	}
+	elsif ($pkg =~ /Net::FSP/o && $haveit{'fsp'})
+	{	
+		foreach $i (keys %args)
+		{
+			foreach $j (@supported_mods)
+			{
+				if ($i =~ /^${j}_/o)
+				{
+					if ($j eq 'fsp')
+					{
+						($t = $i) =~ s/^${j}_//;
+						$args{$t} = $args{$i};
+					}
+					delete $args{$i};
+				}
+			}
+		}
+		eval { require "Net/xFTP_FSP.pm" };
+		if ($@)
+		{
+			warn "xFTP:Could not require Net::xFTP_FSP.pm module($@)!";
+			return;
+		}
+		$xftp = Net::xFTP::FSP::new("${class}::FSP", $pkg, $host, %args);
+	}
+	elsif ($pkg =~ /Net::OpenSSH/o && $haveit{'openssh'})
+	{
+		foreach $i (keys %args)
+		{
+			foreach $j (@supported_mods)
+			{
+#				next  if ($j eq 'openssh');
+#				delete $args{$i}  if ($i =~ /^${j}_/o)   #REMOVE ALL ARGS NOT PREFIXED WITH 'ftp_'
+				if ($i =~ /^${j}_/o)
+				{
+					if ($j eq 'openssh')
+					{
+						($t = $i) =~ s/^${j}_//;
+						$args{$t} = $args{$i};
+					}
+					delete $args{$i};
+				}
+			}
+		}
+		eval { require "Net/xFTP_OpenSSH.pm" };
+		if ($@)
+		{
+			warn "xFTP:Could not require Net::xFTP_OpenSSH.pm module($@)!";
+			return;
+		}
+		$xftp = Net::xFTP::OpenSSH::new("${class}::OpenSSH", $pkg, $host, %args);
+	}
+	elsif (!$pkg || $pkg =~ /local/io)
+	{
+		foreach $i (keys %args)
+		{
+			foreach $j (@supported_mods)
+			{
+				if ($i =~ /^${j}_/o)
+				{
+					if ($j eq 'local')
+					{
+						($t = $i) =~ s/^${j}_//;
+						$args{$t} = $args{$i};
+					}
+					delete $args{$i};
+				}
+			}
+		}
+		eval { require "Net/xFTP_LOCAL.pm" };
+		if ($@)
+		{
+			warn "xFTP:Could not require Net::xFTP_LOCAL.pm module($@)!";
+			return undef;
+		}
+		$xftp = Net::xFTP::LOCAL::new("${class}::LOCAL", $pkg, $host, %args);
+	}
+	else
+	{
+		@_ = "Do not have package \"$pkg\"!";
+		return undef;
+	}
+
+	if ($xftp)
+	{
+		$xftp->{pkg} = ($pkg =~ /local/io) ? $pkg : '';
+		$xftp->{bummer} = ($^O =~ /Win/o) ? 1 : 0;
 		return $xftp;
 	}
 	else
 	{
-		@_ = "Do not have package \"$xftp->{pkg}\"!";
-		return;
+		@_ = @_ . " Could not get new $pkg object (undef)!";
 	}
+	return undef;
 }
 
-sub haveFTP
+sub haveFTP        #DEPRECIATED, USE haveModule($module) INSTEAD!
 {
-	return $haveFTP;
+	return $haveit{'ftp'};
 }
 
 sub haveSFTP
 {
-	return $haveSFTP;
+	return $haveit{'sftp'};
 }
 
-sub haveSSH2
+sub haveModule
 {
-	return $haveSSH2;
+	my $modul = shift;
+
+	my $modHash = &haveModules();
+	return (defined $modHash->{$modul}) ? $modHash->{$modul} : 0;
 }
 
 sub haveModules
 {
-	return { 'Net::FTP' => $haveFTP, 'Net::SFTP' => $haveSFTP, 'Net::SSH2' => $haveSSH2 };
+	return { 'Net::FTP' => $haveit{'ftp'}, 'Net::SFTP' => $haveit{'sftp'},
+			'Net::SSH2' => $haveit{'ssh2'}, 'Net::SFTP2::Foreign' => $haveit{'foreign'},
+			'Net::OpenSSH' => $haveit{'openssh'} };
 }
 
 sub protocol
@@ -446,1180 +286,6 @@ sub protocol
 
 	return $self->{pkg};
 }
-
-sub ascii
-{
-	my $self = shift;
-
-	$self->{xftp}->ascii()  if ($self->{pkg} =~ /Net::FTP/o && $haveFTP);
-	return;
-}
-
-sub binary
-{
-	my $self = shift;
-
-	$self->{xftp}->binary()  if ($self->{pkg} =~ /Net::FTP/o && $haveFTP);
-	return;
-}
-
-sub quit
-{
-	my $self = shift;
-	if ($self->{pkg} =~ /Net::FTP/o)
-	{
-		$self->{xftp}->quit();
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o)
-	{
-		$self->{xftp}->disconnect();
-	}
-	else
-	{
-		$self->{xftp} = undef;
-		delete($self->{xftp});
-	}
-	return;
-}
-
-sub ls
-{
-	my $self = shift;
-	my $path = shift || '';
-	my $showall = shift || 0;
-	my @dirlist;
-	if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		@dirlist = $self->{xftp}->ls($path||'.');
-		return  unless (defined $dirlist[0]);     #ADDED 20070613 TO PREVENT WARNING.
-		shift (@dirlist)  if ($dirlist[0] =~ /^total \d/o);  #REMOVE TOTAL LINE!
-		my $i = 0;
-		while ($i<=$#dirlist)
-		{
-			#$dirlist[$i] =~ s#\/\/#\/#;
-			$dirlist[$i] = $1  if ($dirlist[$i] =~ m#([^\/\\]+)$#o);
-			$dirlist[$i] = $1  if ($dirlist[$i] =~ /\/(\.\.?)$/o);
-			if ($dirlist[$i] eq '..' && $path eq '/')
-			{
-				splice(@dirlist, $i, 1);
-			}
-			elsif (!$showall && $dirlist[$i] =~ /^\.[^\.]/o)
-			{
-				splice(@dirlist, $i, 1);
-			}
-			else
-			{
-				++$i;
-			}
-		}
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{
-		my $realpath = $self->{sshsftp}->realpath($path||$self->{cwd}||'.');
-#		chomp $realpath;
-		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		my $sshdir = $self->{sshsftp}->opendir($realpath);
-		if ($sshdir)
-		{
-			my ($h, @tm, $mtimeStr, $filetype);
-			while ($h = $sshdir->read())
-			{
-				next  if ($h->{name} =~ /\d \.\.$/o && $path eq '/');
-				next  if (!$showall && $h->{name} =~ /\d \.[^\.]\S*$/o);
-				$filetype = &getPermStr($h->{mode});
-				@tm = localtime($h->{mtime});
-				push (@dirlist, $h->{name});
-			}
-		}
-		else
-		{
-			$self->{xftp_lastmsg} = "ls:opendir($realpath):Could not open directory("
-					.join(' ', $self->{sshsftp}->error()).')!';
-			return;
-		}
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		my $realpath;
-		eval { $realpath = $self->{xftp}->do_realpath($path||$self->{cwd}||'.') };
-		chomp $realpath;
-		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		my @dirHash;
-		eval { @dirHash = $self->{xftp}->ls($realpath) };
-		if ($@)
-		{
-			$self->{xftp_lastmsg} = $@;
-			my $err = $self->{xftp}->status;
-			return  if ($err);
-		}
-		return  unless (defined $dirHash[0]);     #ADDED 20071024 FOR CONSISTENCY.
-		shift (@dirHash)  if ($dirHash[0]->{longname} =~ /^total \d/o);  #REMOVE TOTAL LINE!
-		my $t;
-		@dirlist = ();
-		for (my $i=0;$i<=$#dirHash;$i++)
-		{
-			$t = $dirHash[$i]->{filename};
-			next  if ($t eq '..' && $path eq '/');
-			next  if (!$showall && $t =~ /^\.[^\.]/o);
-			push (@dirlist, $t);
-		}
-	}
-	elsif (!$self->{pkg})
-	{
-		my $realpath = $path || Cwd::cwd();
-		if ($realpath eq '..')
-		{
-			$realpath = Cwd::cwd();
-			chop $realpath  if ($realpath =~ m#\/$#o);
-			$realpath =~ s#\/[^\/]+##o;
-		}
-		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		my $t;
-		@dirlist = ();
-		if (opendir D, $realpath)
-		{
-			while ($t = readdir(D))
-			{
-				next  if ($t =~ /^total \d/o);
-				next  if ($t eq '..' && $path eq '/');
-				next  if (!$showall && $t =~ /^\.[^\.]/o);
-				push (@dirlist, $t);
-			}
-		}
-		else
-		{
-			$self->{xftp_lastmsg} = $! || 'Local ls failed for unknown reasons';
-			return;
-		}
-	}
-	else
-	{
-		return;
-	}
-	@dirlist = sort @dirlist;
-
-	##ON SOME SERVERS, THESE DON'T GET ADDED ON, SO ADD THEM HERE!
-	#unshift (@dirlist, '..')  unless ($path eq '/' || $dirlist[1] eq '..');
-	#unshift (@dirlist, '.')  unless ($dirlist[0] eq '.');
-
-	return wantarray ? @dirlist : \@dirlist;
-}
-
-sub dir
-{
-	my $self = shift;
-	my $path = shift || '';
-	my $showall = shift || 0;
-	my @dirlist;
-	if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		@dirlist = $self->{xftp}->dir($path||'.');
-		return  unless (defined $dirlist[0]);     #ADDED 20070613 TO PREVENT WARNING.
-		shift (@dirlist)  if ($dirlist[0] =~ /^total \d/o);  #REMOVE TOTAL LINE!
-		my $i = 0;
-		while ($i<=$#dirlist)
-		{
-			#$dirlist[$i] =~ s#\/\/#\/#;
-			$dirlist[$i] = $1  if ($dirlist[$i] =~ m#([^\/\\]+)$#o);
-			$dirlist[$i] = $1  if ($dirlist[$i] =~ /\/(\.\.?)$/o);
-			if ($dirlist[$i] =~ /\d \.\.$/o && $path eq '/')
-			{
-				splice(@dirlist, $i, 1);
-			}
-			elsif (!$showall && $dirlist[$i] =~ /\d \.[^\.]\S*$/o)
-			{
-				splice(@dirlist, $i, 1);
-			}
-			else
-			{
-				++$i;
-			}
-		}
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{
-		my $realpath = $self->{sshsftp}->realpath($path||$self->{cwd}||'.');
-#		chomp $realpath;
-		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		my $sshdir = $self->{sshsftp}->opendir($realpath);
-		if ($sshdir)
-		{
-			my ($h, @tm, $mtimeStr, $filetype);
-			while ($h = $sshdir->read())
-			{
-				next  if ($h->{name} =~ /\d \.\.$/o && $path eq '/');
-				next  if (!$showall && $h->{name} =~ /^\.[^\.]\S*$/o);
-				$filetype = &getPermStr($h->{mode});
-				@tm = localtime($h->{mtime});
-				push (@dirlist, sprintf "%s\x02%10s %2d %8s %8s %4d-%2.2d-%2.2d %2.2d:%2.2d %s\n", 
-						$h->{name}, $filetype, $h->{uid}, $h->{gid}, $h->{size}, 
-						$tm[5]+1900, $tm[4]+1, $tm[3], $tm[2], $tm[1], $h->{name});
-			}
-			@dirlist = sort(@dirlist);
-			for (my $i=0;$i<=$#dirlist;$i++)
-			{
-				$dirlist[$i] =~ s/^[^\x02]*\x02//so;
-			}
-		}
-		else
-		{
-			$self->{xftp_lastmsg} = "dir:opendir($realpath):Could not open directory("
-					.join(' ', $self->{sshsftp}->error()).')!';
-			return;
-		}
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		my $realpath;
-		eval { $realpath = $self->{xftp}->do_realpath($path||$self->{cwd}||'.') };
-		chomp $realpath;
-		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		my @dirHash;
-		eval { @dirHash = $self->{xftp}->ls($realpath) };
-		#return  if ($@);
-		if ($@)
-		{
-			$self->{xftp_lastmsg} = $@;
-			my $err = $self->{xftp}->status;
-			return  if ($err);
-		}
-		return  unless (defined $dirHash[0]);     #ADDED 20071024 FOR CONSISTENCY.
-		shift (@dirHash)  if ($dirHash[0]->{longname} =~ /^total \d/o);  #REMOVE TOTAL LINE!
-		my $t;
-		@dirlist = ();
-		#for (my $i=0;$i<=$#dirHash;$i++)
-		foreach my $i (sort { $a->{filename} cmp $b->{filename} } @dirHash)
-		{
-			#$t = $dirHash[$i]->{longname};
-			$t = $i->{longname};
-			next  if ($t =~ /\d \.\.$/o && $path eq '/');
-			next  if (!$showall && $t =~ /\d \.[^\.]\S*$/o);
-			push (@dirlist, $t);
-		}
-	}
-	elsif (!$self->{pkg})
-	{
-		my $realpath = $path || Cwd::cwd();
-		if ($realpath eq '..')
-		{
-			$realpath = Cwd::cwd();
-			chop $realpath  if ($realpath =~ m#\/$#o);
-			$realpath =~ s#\/[^\/]+##o;
-		}
-		$realpath = $self->{cwd} . '/' . $realpath  unless ($realpath =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		my $t;
-		if ($self->{bummer})
-		{
-			if (opendir D, $realpath)
-			{
-				$realpath .= '/'  unless ($realpath =~ m#[\:\/]$#o);
-				my (@sb, @tm, $permval, @permdigits, $permstr);
-				while ($t = readdir(D))
-				{
-					next  if ($t =~ /^total \d/o);
-					next  if ($t eq '..' && $path eq '/');
-					next  if (!$showall && $t =~ /^\.[^\.]/o);
-					@sb = stat("$realpath$t");
-					@tm = localtime($sb[9]);
-					$permval = sprintf('%04o', $sb[2]&07777);
-					@permdigits = split(//, $permval);
-
-					$permstr = (-d "$realpath$t") ? 'd' : '-';
-					$_ = $permvec[$permdigits[1]];
-					if ($permdigits[0] >= 4)
-					{
-						s/\-/S/o;
-						s/x/s/o;
-					}
-					$permstr .= $_;
-					$_ = $permvec[$permdigits[2]];
-					if ($permvec[$permdigits[0]] =~ /w/o)
-					{
-						s/\-/S/o;
-						s/x/s/o;
-					}
-					$permstr .= $_;
-					$_ = $permvec[$permdigits[3]];
-					if ($permvec[$permdigits[0]] =~ /x/o)
-					{
-						s/\-/S/o;
-						s/x/s/o;
-					}
-					$permstr .= $_;
-
-					push (@dirlist, sprintf "%s\x02%10s %2d %8s %8s %10d %4d-%2.2d-%2.2d %2.2d:%2.2d %s\n", 
-							$t, $permstr, $sb[3], $sb[4], $sb[5], $sb[7], $tm[5]+1900, $tm[4]+1, $tm[3], $tm[2], $tm[1], $t);
-				}
-				@dirlist = sort(@dirlist);
-				for (my $i=0;$i<=$#dirlist;$i++)
-				{
-					$dirlist[$i] =~ s/^[^\x02]*\x02//so;
-				}
-			}
-		}
-		else
-		{
-			my @d = $showall ? `ls -la $realpath` : `ls -l $realpath`;
-			if (@d)
-			{
-				shift @d  if ($d[0] =~ /^total \d/o);   #REMOVE "TOTAL" LINE.
-				foreach my $t (@d)
-				{
-					chomp $t;
-					next  if ($t =~ /\d \.\.$/o && $path eq '/');
-					next  if (!$showall && $t =~ /\d \.[^\.]\S*$/o);
-					push (@dirlist, $t);
-				}
-			
-			}
-			elsif ($@)
-			{
-				$self->{xftp_lastmsg} = $@;
-				return;
-			}
-		}
-	}
-	else
-	{
-		return;
-	}
-
-	##ON SOME SERVERS, THESE DON'T GET ADDED ON, SO ADD THEM HERE!
-	#unshift (@dirlist, '..')  unless ($path eq '/' || $dirlist[1] =~ /\d \.\.$/);
-	#unshift (@dirlist, '.')  unless ($dirlist[0] =~ /\d \.$/);
-
-	return wantarray ? @dirlist : \@dirlist;
-}
-
-sub pwd  #GET AND RETURN THE "CURRENT" DIRECTORY.
-{
-	my $self = shift;
-	my $cwd;
-	if ($self->{pkg} =~ /Net::FTP/o)
-	{
-		$cwd = $self->{xftp}->pwd();
-		$self->{cwd} = $cwd  if ($cwd);
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		$self->{cwd} = $cwd  if ($cwd);
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{
-		$self->{cwd} = $cwd  if ($cwd);
-	}
-	elsif (!$self->{pkg})
-	{
-		$self->{cwd} = Cwd::cwd() || $ENV{PWD};
-	}
-	return $self->{cwd};
-}
-
-sub get    #(Remote, => Local)
-{
-	my $self = shift;
-
-	return undef  unless (@_ >= 1);
-	my @args = @_;
-	if (!$self->{pkg} or $self->{pkg} =~ /Net::S(?:FTP|SH2)/o)
-	{
-		$args[0] = $self->{cwd} . '/' . $args[0]  unless ($args[0] =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		unless (@args >= 2)
-		{
-#			if (ref(\$args[1]) eq 'GLOB')
-			if (ref(\$args[0]) eq 'GLOB')
-			{
-				$self->{xftp_lastmsg} = 'Must specify a remote filename (2 arguments) since 1st arg. is a filehandle!';
-				return undef;
-			}
-		}
-	}
-	unless (@args >= 2)
-	{
-		$args[1] = $args[0];
-		$args[1] = $1  if ($args[1] =~ m#([^\/\\]+)$#o);
-	}
-	my $ok;
-	if (!$self->{pkg})
-	{
-		if (ref(\$args[1]) eq 'GLOB')
-		{
-			my $buff;
-			my $unsubscriptedFH = $args[1];
-
-			flush $unsubscriptedFH;  #DOESN'T SEEM TO HELP - NEEDED IN CALLING ROUTINE TOO?!?!?!
-
-			local *TF;
-			unless (open(TF, $args[0]))
-			{
-				$self->{xftp_lastmsg} = "Could not open remote file ($args[0]) ("
-						. ($! ? $! : 'unknown reasons') .')!';
-			}
-			while ($buff = <TF>)
-			{
-				print $unsubscriptedFH $buff;
-			}
-			close TF;
-			flush $unsubscriptedFH;
-			return 1;
-		}
-		else
-		{
-			$ok = File::Copy::copy($args[0], $args[1]);
-		}
-		unless ($ok)
-		{
-			$self->{xftp_lastmsg} = $! || 'Local copy failed for unknown reasons';
-		}
-	}
-	else
-	{
-		if ($self->{pkg} =~ /Net::SFTP/o && ref(\$args[1]) eq 'GLOB')
-		{
-			my $remoteHandle;
-			my $offset = 0;
-			my $buff;
-			my $unsubscriptedFH = $args[1];
-			eval { $remoteHandle = $self->{xftp}->do_open($args[0], 0) };
-			if ($remoteHandle)
-			{
-				my $err;
-				while (1)
-				{
-					($buff, $err) = $self->{xftp}->do_read($remoteHandle, $offset, $self->{BlockSize});
-					last  if (defined $err);
-					print $unsubscriptedFH $buff;
-					$offset += $self->{BlockSize};
-				}
-				$self->{xftp}->do_close($remoteHandle);
-				return 1;
-			}
-			else
-			{
-				$self->{xftp_lastmsg} = $@ || 'Could not open remote handle for unknown reasons!';
-				return undef;
-			}
-		}
-		elsif ($self->{pkg} =~ /Net::SSH2/o && ref(\$args[1]) eq 'GLOB')
-		{
-			my $remoteHandle;
-			my $offset = 0;
-			my $buff;
-			my $bytecnt;
-			my $unsubscriptedFH = $args[1];
-			eval { $remoteHandle = $self->{sshsftp}->open($args[0], 0) };
-			if ($remoteHandle)
-			{
-				my $err;
-				while (1)
-				{
-					$bytecnt = $remoteHandle->read($buff, $self->{BlockSize});
-					last  unless (defined($bytecnt) && $bytecnt > 0);
-					print $unsubscriptedFH $buff;
-					$offset += $bytecnt;
-					$remoteHandle->seek($offset);
-				}
-				return 1  if ($offset);
-				$self->{xftp_lastmsg} = "get:open($args[0]):Could not get data into filehandle("
-						.join(' ', $self->{sshsftp}->error()).')!';
-				return undef;
-			}
-			else
-			{
-				$self->{xftp_lastmsg} = $@ || "get:open($args[0]):Could not open remote handle for unknown reasons!";
-				return undef;
-			}
-		}
-		else
-		{
-			if ($self->{pkg} =~ /Net::SFTP/o)
-			{
-				eval { $self->{xftp}->get(@args) };
-				if ($@)
-				{
-					$self->{xftp_lastmsg} = $@;
-					$ok = $self->{xftp}->status;
-					return $ok ? undef : 1;
-				}
-				else
-				{
-					return 1;
-				}
-			}
-			elsif ($self->{pkg} =~ /Net::SSH2/o)
-			{
-				$ok = $self->{xftp}->scp_get(@args);
-				return 1  if ($ok);
-				$self->{xftp_lastmsg} = "get:scp_get(".join(',',@args)
-						."):Could not get file from remote host("
-						.join(' ', $self->{xftp}->error()).')!';
-				return undef;
-			}
-			else
-			{
-				eval { $ok = $self->{xftp}->get(@args) };
-			}
-			$self->{xftp_lastmsg} = $@  if ($@);
-		}
-	}
-	return $ok ? 1 : undef;
-}
-
-sub put    #(LOCAL => REMOTE) SFTP returns OK=1 on SUCCESS.
-{
-	my $self = shift;
-
-	return undef  unless (@_ >= 1);
-	my @args = @_;
-	unless (@args >= 2 || ref(\$args[0]) eq 'GLOB')
-	{
-		$args[1] = $args[0];
-		$args[1] = $1  if ($args[1] =~ m#([^\/\\]+)$#o);
-	}
-	if ($self->{pkg} =~ /Net::S(?:FTP|SH2)/o)
-	{
-		$args[1] = $self->{cwd} . '/' . $args[1]  unless ($args[1] =~ m#^(?:[a-zA-Z]\:|\/)#o);
-	}
-
-	my $ok;
-	if (!$self->{pkg})
-	{
-		$args[1] = $self->{cwd} . '/' . $args[1]  unless ($args[1] =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		if (ref(\$args[0]) eq 'GLOB')
-		{
-			my $buff;
-			my $unsubscriptedFH = $args[0];
-
-			local *TF;
-			unless (open(TF, ">$args[1]"))
-			{
-				$self->{xftp_lastmsg} = "Could not open remote file ($args[1]) ("
-						. ($! ? $! : 'unknown reasons') .')!';
-			}
-			my $t;
-			while ($buff = <$unsubscriptedFH>)
-			{
-				$t .= $buff;
-			}
-			print TF $t;
-			close TF;
-			return 1;
-		}
-		else
-		{
-			$ok = File::Copy::copy($args[0], $args[1]);
-		}
-		unless ($ok)
-		{
-			$self->{xftp_lastmsg} = $! || 'Local copy failed for unknown reasons';
-		}
-	}
-	else
-	{
-		if ($self->{pkg} =~ /Net::SFTP/o && ref(\$args[0]) eq 'GLOB')
-		{
-			unless ($haveSFTPConstants)
-			{
-				$self->{xftp_lastmsg} = 
-					"Copy failed (You must install the Net::SFTP::Constants Perl module!)";
-				return undef;
-			}
-			my $remoteHandle;
-			my $offset = 0;
-			my $buff;
-			my $unsubscriptedFH = $args[0];
-			eval { no strict 'subs'; $remoteHandle = $self->{xftp}->do_open($args[1], 
-					SSH2_FXF_WRITE | SSH2_FXF_CREAT | SSH2_FXF_TRUNC) };
-			if ($remoteHandle)
-			{
-				my $t;
-				while ($buff = <$unsubscriptedFH>)
-				{
-					$t .= $buff;
-				}
-				eval { $self->{xftp}->do_write($remoteHandle, 0, $t) };
-				if ($@)
-				{
-					$self->{xftp_lastmsg} = $@;
-					$ok = $self->{xftp}->status;
-					return $ok ? undef : 1;
-				}
-				else
-				{
-					return 1;
-				}
-				$self->{xftp}->do_close($remoteHandle);
-				return 1;
-			}
-			else
-			{
-				$self->{xftp_lastmsg} = $@ || 'Could not open remote handle for unknown reasons!';
-				return undef;
-			}
-		}
-		elsif ($self->{pkg} =~ /Net::SSH2/o && ref(\$args[0]) eq 'GLOB')
-		{
-			my $remoteHandle;
-			my $offset = 0;
-			my $buff;
-			my $unsubscriptedFH = $args[0];
-			eval
-			{
-				no strict 'subs';
-				my $openFlags = O_RDWR|O_CREAT|O_TRUNC;
-				$remoteHandle = $self->{sshsftp}->open($args[1], $openFlags);
-			};
-			if ($remoteHandle)
-			{
-				my $t;
-				while ($buff = <$unsubscriptedFH>)
-				{
-					$t .= $buff;
-				}
-				my $bytecnt = $remoteHandle->write($t);
-				return 1  if ($bytecnt);
-				$self->{xftp_lastmsg} = "put:open($args[1]):Could not put data to remote host("
-						.join(' ', $self->{sshsftp}->error()).')!';
-				return undef;
-			}
-			else
-			{
-				$self->{xftp_lastmsg} = $@ || 'Could not open remote handle for unknown reasons!';
-				return undef;
-			}
-		}
-		elsif ($self->{pkg} =~ /Net::SSH2/o)
-		{
-			$ok = $self->{xftp}->scp_put(@args);
-			return 1  if ($ok);
-			$self->{xftp_lastmsg} = "put:scp_put(".join(',', @args)
-					."):Could not put file to remote host("
-					.join(' ', $self->{xftp}->error()).')!';
-			return undef;
-		}
-		else
-		{
-			eval { $ok = $self->{xftp}->put(@args) };
-			$self->{xftp_lastmsg} = $@  if ($@);
-		}
-	}
-	return $ok ? 1 : undef;
-}
-
-sub delete       #RETURNED OK=2 WHEN LAST FAILED.
-{
-	my $self = shift;
-	my $path = shift;
-
-	my $ok;
-	if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		eval { $ok = $self->{xftp}->delete($path) };
-		$self->{xftp_lastmsg} = $@  if ($@);
-		return $ok ? 1 : undef;
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { $ok = $self->{sshsftp}->unlink($path) };
-		$self->{xftp_lastmsg} = $@  if ($@);
-		return $@ ? undef : 1;
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { $ok = $self->{xftp}->do_remove($path) };
-		$self->{xftp_lastmsg} = $@  if ($@);
-		return $@ ? undef : 1;
-	}
-	elsif (!$self->{pkg})
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		return  unless ($path);
-		#!!!!return ($_ == 1) ? 1 : undef;
-		return unlink($path) ? 1 : undef;
-	}
-	return;
-}
-
-sub rename
-{
-	my $self = shift;
-	return undef  unless (@_ == 2);
-
-	my ($oldfile, $newfile) = @_;
-
-	my $ok;
-	if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		eval { $ok = $self->{xftp}->rename($oldfile, $newfile) };
-		$self->{xftp_lastmsg} = $@  if ($@);
-		return $ok ? 1 : undef;
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{
-		$oldfile = $self->{cwd} . '/' . $oldfile  unless ($oldfile =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		$newfile = $self->{cwd} . '/' . $newfile  unless ($newfile =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { $ok = $self->{sshsftp}->rename($oldfile, $newfile) };
-		$self->{xftp_lastmsg} = $@  if ($@);
-		return $@ ? undef : 1;
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		$oldfile = $self->{cwd} . '/' . $oldfile  unless ($oldfile =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		$newfile = $self->{cwd} . '/' . $newfile  unless ($newfile =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { $ok = $self->{xftp}->do_rename($oldfile, $newfile) };
-		$self->{xftp_lastmsg} = $@  if ($@);
-		return $@ ? undef : 1;
-	}
-	elsif (!$self->{pkg})
-	{
-		$oldfile = $self->{cwd} . '/' . $oldfile  unless ($oldfile =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		$newfile = $self->{cwd} . '/' . $newfile  unless ($newfile =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		$ok = rename($oldfile, $newfile);
-		unless ($ok)
-		{
-			$self->{xftp_lastmsg} = $! || 'Local rename failed for unknown reasons';
-		}
-		return $ok ? 1 : undef;
-	}
-	return;
-}
-
-sub mkdir
-{
-	my $self = shift;
-	my $path = shift;
-	my $tryRecursion = shift||0;
-	$path =~ s#[\/\\]$##o  unless ($path eq '/');
-
-	my @pathStack;
-	my $ok = '';
-	if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		eval { $ok = $self->{xftp}->mkdir($path, $tryRecursion) };
-		$self->{xftp_lastmsg} = $@  if ($@);
-		return $ok ? 1 : undef;
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{
-		my $orgPath = $path;
-		my $didRecursion = 0;
-		my $errored = 0;
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		while ($path)
-		{
-			eval { $ok = $self->{sshsftp}->mkdir($path) };
-			$self->{xftp_lastmsg} = $@  if ($@);
-			last  if ($ok);
-			if ($tryRecursion)
-			{
-				push (@pathStack, $path);
-				$path =~ s#[^\/\\]+$##o;
-				$path =~ s#[\/\\]$##o;
-				$didRecursion = 1;
-			}
-			else
-			{
-				$self->{xftp_lastmsg} = "mkdir:mkdir($path):Could not create subdirectory("
-						.join(' ', $self->{sshsftp}->error()).')!';
-				$errored = 1;
-				last;
-			}
-		}
-		if ($didRecursion)
-		{
-			while (@pathStack)
-			{
-				$path = pop @pathStack;
-				next  if ($self->{sshsftp}->mkdir($path));
-				$self->{xftp_lastmsg} = "mkdir:mkdir($path):Could not recursively create subdirectory("
-						.join(' ', $self->{sshsftp}->error()).')!';
-				return undef;
-
-			}
-			return 1;
-		}
-#		return (defined($ok) && $ok) ? 1 : undef;
-		return $errored ? 1 : undef;
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		my $orgPath = $path;
-		my $didRecursion = 0;
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		while ($path)
-		{
-			$path =~ s#[^\/\\]+$##o;
-			$path =~ s#[\/\\]$##o;
-			$path = '/'  unless ($path);
-			last  if ($self->isadir($path));
-			if ($tryRecursion)
-			{
-				push (@pathStack, $path);
-				$didRecursion = 1;
-				last  if ($path eq '/');
-			}
-			else
-			{
-				$self->{xftp_lastmsg} = "mkdir:Could not create path($orgPath) since parent not directory!";
-				return undef;
-			}
-		}
-		if ($didRecursion)
-		{
-			while (@pathStack)
-			{
-				$path = pop @pathStack;
-				eval { $ok = $self->{xftp}->do_mkdir($path, Net::SFTP::Attributes->new()) };
-				if ($@)
-				{
-					$self->{xftp_lastmsg} = $@;
-					return undef;
-				}
-				next;
-			}
-		}
-		eval { $ok = $self->{xftp}->do_mkdir($orgPath, Net::SFTP::Attributes->new()) };
-		if ($@)
-		{
-			$self->{xftp_lastmsg} = $@;
-			return undef;
-		}
-		return 1;
-	}
-	elsif (!$self->{pkg})
-	{
-		my $orgPath = $path;
-		my $didRecursion = 0;
-		my $errored = 0;
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		while ($path)
-		{
-			$ok = mkdir $path;
-			last  if ($ok);
-			if ($tryRecursion)
-			{
-				push (@pathStack, $path);
-				$path =~ s#[^\/\\]+$##o;
-				$path =~ s#[\/\\]$##o;
-				$didRecursion = 1;
-			}
-			else
-			{
-				$self->{xftp_lastmsg} = "mkdir:mkdir($path):failed($!)!";
-					$errored = 1;
-				last;
-			}
-		}
-		if ($didRecursion)
-		{
-			while (@pathStack)
-			{
-				$path = pop @pathStack;
-				next  if (mkdir $path);
-				$self->{xftp_lastmsg} = "mkdir:mkdir($path):Could not recursively create subdirectory($!)!";
-				return undef;
-
-			}
-			return 1;
-		}
-		return $errored ? undef : 1;
-	}
-	return undef;
-}
-
-sub rmdir
-{
-	my $self = shift;
-	my $path = shift;
-	$path =~ s#[\/\\]$##o  unless ($path eq '/');
-
-	my $ok;
-	if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		eval { $ok = $self->{xftp}->rmdir($path) };
-		$self->{xftp_lastmsg} = $@  if ($@);
-		return $ok ? 1 : undef;
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { $ok = $self->{sshsftp}->rmdir($path) };
-		$self->{xftp_lastmsg} = $@  if ($@);
-		return $@ ? undef : 1;
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { $ok = $self->{xftp}->do_rmdir($path) };
-		$self->{xftp_lastmsg} = $@  if ($@);
-		return $@ ? undef : 1;
-	}
-	elsif (!$self->{pkg})
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		return undef  unless ($path);
-		$ok  = rmdir $path;
-		unless ($ok)
-		{
-			$self->{xftp_lastmsg} = $! || 'Local rename failed for unknown reasons';
-		}
-		return $ok ? 1 : undef;
-	}
-	return;
-}
-
-sub message
-{
-	my $self = shift;
-
-	chomp $self->{xftp_lastmsg};
-	if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		return $self->{xftp}->message;
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		my @res = $self->{xftp}->status;
-		return ($self->{xftp_lastmsg} =~ /^\s*$res[0]/) ? $self->{xftp_lastmsg} : "$res[0]: $res[1] - $self->{xftp_lastmsg}";
-	}
-	else
-	{
-		return $self->{xftp_lastmsg};
-	}
-	return;
-}
-
-sub sftpWarnings  #ONLY WAY TO GET NON-FATAL WARNINGS INTO $@ INSTEAD OF STDERR IS TO USE THIS CALLBACK!
-{                 #(WE ALWAYS WRAP SFTP->METHODS W/AN EVAL)!
-	my $self = shift;
-	my @res = $self->status;
-	die "$res[0]: $res[1] - ".join(' ', @_)."\n";
-}
-
-sub size
-{
-	my $self = shift;
-	my $path = shift;
-
-	my $ok;
-	if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		return $self->{xftp}->size($path);
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		my %statHash = $self->{sshsftp}->stat($path);
-		unless (defined $statHash{size})
-		{
-			$self->{xftp_lastmsg} = "size:stat($path):Could not fetch file size("
-					.join(' ', $self->{sshsftp}->error()).')!';
-			return undef;
-		}
-		return $statHash{size};
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { $ok = $self->{xftp}->do_stat($path) };
-		unless (defined($ok) && $ok)
-		{
-			$self->{xftp_lastmsg} = $@;
-			return undef;
-		}
-		return $ok->size();
-	}
-	elsif (!$self->{pkg})
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { (undef, undef, undef, undef, undef, undef, undef, $ok) = stat($path) };
-		return $@ ? undef : $ok;
-	}
-	return;
-}
-
-sub isadir
-{
-	my $self = shift;
-	my $path = shift;
-
-	my $ok;
-	if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		my $curdir = $self->{xftp}->pwd();
-		eval { $ok = $self->{xftp}->cwd($path); };
-		if ($ok)
-		{
-			$self->{xftp}->cwd($curdir);
-			return 1;
-		}
-		return 0;
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { $ok = $self->{sshsftp}->opendir($path) };
-		if (defined($ok) && $ok)
-		{
-#			eval { $self->{xftp}->do_close($ok) };
-			return 1;
-		}
-		return 0;
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { $ok = $self->{xftp}->do_opendir($path) };
-		if (defined($ok) && $ok)
-		{
-			eval { $self->{xftp}->do_close($ok) };
-			return 1;
-		}
-		return 0;
-	}
-	elsif (!$self->{pkg})
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		return (-d $path) ? 1 : 0;
-	}
-	return;
-}
-
-sub chmod
-{
-	my $self = shift;
-	my $permissions = shift;
-	my $path = shift;
-
-	my ($ok, $attrs);
-	if ($self->{pkg} =~ /Net::FTP/o && $haveFTP)
-	{
-		unless ($self->{xftp}->supported('SITE CHMOD'))
-		{
-			$@ = 'Server does not support chmod!';
-			$self->{xftp_lastmsg} = $@;
-			$self->{xftp}->set_status(1, $@);
-		}
-		$ok = $self->{xftp}->site('CHMOD', $permissions, $path);
-		return ($ok == 2) ? 1 : undef;
-	}
-	elsif ($self->{pkg} =~ /Net::SSH2/o && $haveSSH2)
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		my %statHash = $self->{sshsftp}->stat($path);
-		unless (defined $statHash{mode})
-		{
-			$self->{xftp_lastmsg} = "chmod:stat($path):Could not fetch current file permissions("
-					.join(' ', $self->{sshsftp}->error()).')!';
-			return undef;
-		}
-		my $filetype = int($statHash{mode} / 4096);
-		eval "\$permissions = 0$permissions";
-		$statHash{mode} = ($filetype*4096) + $permissions;
-		$ok = $self->{sshsftp}->setstat($path, mode => $statHash{mode});
-		unless ($ok)
-		{
-			$self->{xftp_lastmsg} = "chmod:setstat($path, mode => $statHash{mode}):Invalid permissions (0-777) - $@ ("
-					.join(' ', $self->{sshsftp}->error()).')!';
-			return undef;
-		}
-		return 1;
-	}
-	elsif ($self->{pkg} =~ /Net::SFTP/o && $haveSFTP)
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval { $attrs = $self->{xftp}->do_stat($path) };
-		unless (defined($attrs) && $attrs)
-		{
-			$self->{xftp_lastmsg} = $@;
-			return undef;
-		}
-		eval "\$permissions = 0$permissions";
-		if ($@)
-		{
-			$self->{xftp_lastmsg} = "Invalid permissions (000-777) - $@";
-			return undef;
-		}
-		$attrs->perm($permissions);
-		eval { $ok = $self->{xftp}->do_setstat($path, $attrs) };
-#print STDERR "-setstat: AT=".($@ ? $@ : 'NULL')."= ok=".(defined($ok) ? $ok : 'UNDEF')."=\n";
-		if ($@ || !defined($ok))
-		{
-			$self->{xftp_lastmsg} = $@;
-			return;
-		}
-		return 1;
-	}
-	elsif (!$self->{pkg})
-	{
-		$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
-		eval "\$permissions = 0$permissions";
-		if ($@)
-		{
-			$self->{xftp_lastmsg} = "Invalid permissions (0-777) - $@";
-			return undef;
-		}
-		$ok = chmod $permissions, $path;
-		unless ($ok)
-		{
-			$self->{xftp_lastmsg} = $! || 'Local rename failed for unknown reasons';
-		}
-		return $ok ? 1 : undef;
-	}
-	return;
-}
-
-sub getPermStr
-{
-	my $mode = shift;
-
-	my (%ftypes);
-	$ftypes{(S_IFDIR)} = "d";
-	$ftypes{(S_IFCHR)} = "c";
-	$ftypes{(S_IFREG)} = "-"  if (defined S_IFREG);
-	if ($bummer)   #FOR SOME REASON WINDOWS FCNTL DOES NOT HAVE THESE, BUT WE NEED -
-	{              #THEM WHEN LOOKING AT SPECIAL FILES ON OTHER UNIX SYSTEMS:
-		$ftypes{24576} = "b";
-		$ftypes{4096} = "p";
-		$ftypes{40960} = "l";
-		$ftypes{49152} = "s";
-	}
-	else
-	{
-		$ftypes{(S_IFBLK)} = "b";
-		$ftypes{(S_IFIFO)} = "p";
-		$ftypes{(S_IFLNK)} = "l";
-		$ftypes{(S_IFSOCK)} = "s";
-	}
-	my @fsperms = ('----', '---t', '--s-', '--st', '-s--', '-s-t', '-ss-', '-sst');	
-	
-	my $permissions = sprintf "%04o", S_IMODE($mode);
-	my @permissions = split(//o, sprintf("%04o", S_IMODE($mode)));	
-	my @spermissions = split(//o, $fsperms[$permissions[0]]);	
-	my $pstr = $ftypes{S_IFMT($mode)};
-	my $ps;
-	for (my $i=1;$i<=3;$i++)
-	{
-		$ps = $permvec[$permissions[$i]];		#r-x
-		if ($spermissions[$i] =~ /\w/o)
-		{
-			my $loc = substr($ps,2,2);
-			if ($loc =~ /\w/o)
-			{
-				$loc = $spermissions[$i];
-			}
-			else
-			{
-				$loc = uc($spermissions[$i]);
-			}				
-			$ps =~ s/^(..).$/$1$loc/;			
-		}
-		$pstr .= $ps;
-	}		
-	return $pstr;
-}	
 
 1
 
@@ -1654,7 +320,7 @@ Many thanks go to these gentlemen whose work made this module possible.
 
 	#Test for needed protocol module.
 	die "..This server connection needs Net::SFTP!" 
-		unless (Net::xFTP->haveSFTP());
+		unless (Net::xFTP->haveModule('Net::SFTP'));
 
 	#Establish a new connection to a remote host.
 	$ftp = Net::xFTP->new('SFTP', "some.host.name", Debug => 0,
@@ -1722,6 +388,9 @@ Many thanks go to these gentlemen whose work made this module possible.
 
 	#Fetch the size of a remote file.
 	print "remote.file has ".$ftp->size('remote.file')." bytes.\n";
+
+	#Fetch the modification time of a remote file.
+	print "remote.file has ".$ftp->mdtm('remote.file')." bytes.\n";
 
 	#Copy a remote file to a new remote location.
 	$ftp->copy('remote.fileA','remote.fileB')
@@ -2034,6 +703,12 @@ Returns 1 if successful, I<undef> if fails.
 Returns the size in bytes of C<FILE>, or I<undef> on failure.  For FTP, 
 the I<size> method is called, for SFTP:  I<do_stat>.  For <local>, perl's 
 I<stat> function.
+
+=item mdtm ( FILE )
+
+Returns the modification time in Perl "time" format of C<FILE>, or I<undef> 
+on failure.  For FTP, the I<size> method is called, for SFTP:  I<do_stat>.  
+For <local>, perl's I<stat> function.
 
 =item Other methods
 
