@@ -4,7 +4,7 @@ use Net::SFTP::Foreign::Constants qw( SSH2_FXF_CREAT SSH2_FXF_WRITE );
 
 my @permvec = ('---','--x','-w-','-wx','r--','r-x','rw-','rwx');
 
-sub new
+sub new_foreign
 {
 	my $subclass = shift;
 	my $pkg = shift;
@@ -190,8 +190,6 @@ sub ls
 	@dirlist = ();
 	foreach my $i (sort { $a->{filename} cmp $b->{filename} } @{$dirListRef})
 	{
-		next  if ($i->{filename} =~ /^\.\.$/o && $path eq '/');
-		next  if (!$showall && $i->{filename} =~ /^\.[^\.]/o);
 		push (@dirlist, $i->{filename});
 	}
 
@@ -226,8 +224,8 @@ sub dir
 		#$t = $dirHash[$i]->{longname};
 		$t = $i->{filename};
 		chomp $t;
-		next  if ($t =~ /^\.\.$/o && $path eq '/');
-		next  if (!$showall && $t =~ /^\.[^\.]/o);
+		next  if ($t =~ /\.\.$/o && $path eq '/');
+		next  if (!$showall && $t =~ /\.[^\.]\S*$/o);
 #		$tp = substr($i->{a}->flags,0,1);
 #		$tp = '-'  if ($tp =~ /f/io);
 		@tm = localtime($i->{a}->mtime);

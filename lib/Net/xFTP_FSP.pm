@@ -1,6 +1,6 @@
 package Net::xFTP::FSP;
 
-sub new
+sub new_fsp
 {
 	my $subclass = shift;
 	my $pkg = shift;
@@ -180,7 +180,7 @@ sub dir
 		#$t = $dirHash[$i]->{longname};
 		$t = $i->short_name();
 		next  if ($t =~ /\d \.\.$/o && $path eq '/');
-		next  if (!$showall && $t =~ /\d \.[^\.]/o);
+		next  if (!$showall && $t =~ /\d \.[^\.]\S*$/o);
 		$tp = substr($i->type(),0,1);
 		$tp = '-'  if ($tp =~ /f/io);
 		@tm = localtime($i->time());
@@ -209,6 +209,8 @@ sub get    #(Remote, => Local)
 
 	return undef  unless (@_ >= 1);
 	my @args = @_;
+print STDERR "-get: args=".join('|',@args)."= ref=".ref($args[1])."= /ref=".ref(\$args[1])."= content=".$$args[1]."=\n";
+print STDERR "-arg1 dereferenced =$args[1]=\n";
 	if (@args >= 2)
 	{
 		$args[1] = \$_[1]  if (ref(\$args[1]) =~ /GLOB/io);

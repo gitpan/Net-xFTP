@@ -11,6 +11,7 @@ lib/Net/xFTP_LOCAL.pm
 lib/Net/xFTP_OpenSSH.pm
 lib/Net/xFTP_SFTP.pm
 lib/Net/xFTP_SSH2.pm
+lib/Net/xFTP_FTPSSL.pm
 t/00-load.t
 t/pod-coverage.t
 t/pod.t

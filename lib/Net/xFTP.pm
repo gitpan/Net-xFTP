@@ -11,7 +11,7 @@ use Cwd 'cwd';
 #x use Fcntl ':mode';
 #x use File::Copy;
 
-my @supported_mods = (qw(ftp sftp ssh2 local foreign fsp));
+my @supported_mods = (qw(ftp sftp ssh2 local foreign fsp ftpssl));
 my %haveit;
 my  $haveSFTPConstants = 0;
 
@@ -29,8 +29,9 @@ eval 'use Net::SSH2; use Net::SSH2::SFTP; $haveit{"ssh2"} = 1; 1';
 eval 'use Net::SFTP::Foreign; $haveit{"foreign"} = 1; 1';
 eval 'use Net::OpenSSH; use IO::Pty; $haveit{"openssh"} = 1; 1';
 eval 'use Net::FSP; $haveit{"fsp"} = 1; 1';
+eval 'use Net::FTPSSL; $haveit{"ftpssl"} = 1; 1';
 
-our $VERSION = '0.3b1';
+our $VERSION = '0.4';
 
 sub new
 {
@@ -81,7 +82,7 @@ sub new
 			warn "xFTP:Could not require Net::xFTP_FTP.pm module($@)!";
 			return;
 		}
-		$xftp = Net::xFTP::FTP::new("${class}::FTP", $pkg, $host, %args);
+		$xftp = Net::xFTP::FTP::new_ftp("${class}::FTP", $pkg, $host, %args);
 	}
 	elsif ($pkg =~ /Net::SFTP::Foreign/o && $haveit{'foreign'})
 	{
@@ -106,7 +107,7 @@ sub new
 			warn "xFTP:Could not require Net::xFTP_Foreign.pm module($@)!";
 			return;
 		}
-		$xftp = Net::xFTP::Foreign::new("${class}::Foreign", $pkg, $host, %args);
+		$xftp = Net::xFTP::Foreign::new_foreign("${class}::Foreign", $pkg, $host, %args);
 	}
 	elsif ($pkg =~ /Net::SSH2/o && $haveit{'ssh2'})
 	{	
@@ -131,7 +132,7 @@ sub new
 			warn "xFTP:Could not require Net::xFTP_SSH2.pm module($@)!";
 			return;
 		}
-		$xftp = Net::xFTP::SSH2::new("${class}::SSH2", $pkg, $host, %args);
+		$xftp = Net::xFTP::SSH2::new_ssh2("${class}::SSH2", $pkg, $host, %args);
 	}
 	elsif ($pkg =~ /Net::SFTP/o && $haveit{'sftp'})
 	{
@@ -156,7 +157,7 @@ sub new
 			warn "xFTP:Could not require Net::xFTP_SFTP.pm module($@)!";
 			return;
 		}
-		$xftp = Net::xFTP::SFTP::new("${class}::SFTP", $pkg, $host, %args);
+		$xftp = Net::xFTP::SFTP::new_sftp("${class}::SFTP", $pkg, $host, %args);
 		$xftp->{haveSFTPConstants} = $haveSFTPConstants  if ($xftp);
 	}
 	elsif ($pkg =~ /Net::FSP/o && $haveit{'fsp'})
@@ -182,7 +183,32 @@ sub new
 			warn "xFTP:Could not require Net::xFTP_FSP.pm module($@)!";
 			return;
 		}
-		$xftp = Net::xFTP::FSP::new("${class}::FSP", $pkg, $host, %args);
+		$xftp = Net::xFTP::FSP::new_fsp("${class}::FSP", $pkg, $host, %args);
+	}
+	elsif ($pkg =~ /Net::FTPSSH/o && $haveit{'ftpssh'})
+	{
+		foreach $i (keys %args)
+		{
+			foreach $j (@supported_mods)
+			{
+				if ($i =~ /^${j}_/o)
+				{
+					if ($j eq 'ftpssh')
+					{
+						($t = $i) =~ s/^${j}_//;
+						$args{$t} = $args{$i};
+					}
+					delete $args{$i};
+				}
+			}
+		}
+		eval { require "Net/xFTP_FTPSSL.pm" };
+		if ($@)
+		{
+			warn "xFTP:Could not require Net::xFTP_FTPSSL.pm module($@)!";
+			return;
+		}
+		$xftp = Net::xFTP::FTPSSL::new_ftpssl("${class}::FTPSSL", $pkg, $host, %args);
 	}
 	elsif ($pkg =~ /Net::OpenSSH/o && $haveit{'openssh'})
 	{
@@ -209,7 +235,7 @@ sub new
 			warn "xFTP:Could not require Net::xFTP_OpenSSH.pm module($@)!";
 			return;
 		}
-		$xftp = Net::xFTP::OpenSSH::new("${class}::OpenSSH", $pkg, $host, %args);
+		$xftp = Net::xFTP::OpenSSH::new_openssh("${class}::OpenSSH", $pkg, $host, %args);
 	}
 	elsif (!$pkg || $pkg =~ /local/io)
 	{
@@ -234,7 +260,7 @@ sub new
 			warn "xFTP:Could not require Net::xFTP_LOCAL.pm module($@)!";
 			return undef;
 		}
-		$xftp = Net::xFTP::LOCAL::new("${class}::LOCAL", $pkg, $host, %args);
+		$xftp = Net::xFTP::LOCAL::new_local("${class}::LOCAL", $pkg, $host, %args);
 	}
 	else
 	{

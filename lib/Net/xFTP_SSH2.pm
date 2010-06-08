@@ -3,9 +3,10 @@ package Net::xFTP::SSH2;
 use Fcntl ':mode';
 use File::Copy;
 
+my $bummer = ($^O =~ /Win/);
 my @permvec = ('---','--x','-w-','-wx','r--','r-x','rw-','rwx');
 
-sub new
+sub new_ssh2
 {
 	my $subclass = shift;
 	my $pkg = shift;
@@ -207,8 +208,8 @@ sub ls
 		my ($h, @tm, $mtimeStr, $filetype);
 		while ($h = $sshdir->read())
 		{
-			next  if ($h->{name} =~ /^\.\.$/o && $path eq '/');
-			next  if (!$showall && $h->{name} =~ /^\.[^\.]/o);
+			next  if ($h->{name} =~ /\d \.\.$/o && $path eq '/');
+			next  if (!$showall && $h->{name} =~ /^\.[^\.]\S*$/o);
 			$filetype = &getPermStr($h->{mode});
 			@tm = localtime($h->{mtime});
 			push (@dirlist, $h->{name});

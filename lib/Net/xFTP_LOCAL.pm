@@ -2,7 +2,7 @@ package Net::xFTP::LOCAL;
 
 my @permvec = ('---','--x','-w-','-wx','r--','r-x','rw-','rwx');
 
-sub new
+sub new_local
 {
 	my $subclass = shift;
 	my $pkg = shift;

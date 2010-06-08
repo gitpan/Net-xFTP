@@ -2,7 +2,7 @@ package Net::xFTP::OpenSSH;
 
 use Time::Local;
 
-sub new
+sub new_openssh
 {
 	my $subclass = shift;
 	my $pkg = shift;
@@ -219,7 +219,7 @@ sub dir
 	{
 		#$t = $dirHash[$i]->{longname};
 		next  if ($t =~ /\d \.\.$/o && $path eq '/');
-		next  if (!$showall && $t =~ /\d \.[^\.]/o);
+		next  if (!$showall && $t =~ /\d \.[^\.]\S*$/o);
 		next  if ($t =~ /^total\s+\d+$/o);
 		push (@dirlist, $t);
 	}

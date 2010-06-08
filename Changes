@@ -34,3 +34,4 @@ Revision history for Net-xFTP
 0.3b1   Rewrote to modularize each supported protocol in it's own module file.
         Added support for protocols:  Net::SFTP::Foreign, Net::OpenSSH,
         and Net::FSP!
+0.4     Added support for Net::FTPSSL protocol.

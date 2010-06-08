@@ -1,6 +1,6 @@
-package Net::xFTP::FTP;
+package Net::xFTP::FTPSSL;
 
-sub new_ftp
+sub new_ftpssl
 {
 	my $subclass = shift;
 	my $pkg = shift;
@@ -13,7 +13,7 @@ sub new_ftp
 	{
 		$xftp->{BlockSize} = $args{BlockSize} || 10240;
 	}	
-	$xftp->{xftp} = Net::FTP->new($host, %args);
+	$xftp->{xftp} = Net::FTPSSL->new($host, %args);
 	unless (defined $xftp->{xftp})
 	{
 		$xftp->{xftp_lastmsg} = $@;
@@ -26,6 +26,7 @@ sub new_ftp
 		my @loginargs = ($args{user});
 		push (@loginargs, $args{password})  if (defined $args{password});
 		push (@loginargs, $args{account})  if (defined $args{account});
+		$args{
 		if ($xftp->{xftp}->login(@loginargs))
 		{
 			my $cwd = $xftp->{xftp}->pwd();

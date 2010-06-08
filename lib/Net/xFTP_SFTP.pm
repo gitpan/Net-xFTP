@@ -1,6 +1,6 @@
 package Net::xFTP::SFTP;
 
-sub new
+sub new_sftp
 {
 	my $subclass = shift;
 	my $pkg = shift;
@@ -233,7 +233,7 @@ sub dir
 		#$t = $dirHash[$i]->{longname};
 		$t = $i->{longname};
 		next  if ($t =~ /\d \.\.$/o && $path eq '/');
-		next  if (!$showall && $t =~ /\d \.[^\.]/o);
+		next  if (!$showall && $t =~ /\d \.[^\.]\S*$/o);
 		push (@dirlist, $t);
 	}
 
