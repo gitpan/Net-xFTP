@@ -31,7 +31,7 @@ eval 'use Net::OpenSSH; use IO::Pty; $haveit{"openssh"} = 1; 1';
 eval 'use Net::FSP; $haveit{"fsp"} = 1; 1';
 eval 'use Net::FTPSSL; $haveit{"ftpssl"} = 1; 1';
 
-our $VERSION = '0.4';
+our $VERSION = '0.41';
 
 sub new
 {
@@ -57,7 +57,32 @@ sub new
 		}
 	}
 
-	if ($pkg =~ /Net::FTP/o && $haveit{'ftp'})
+	if ($pkg =~ /Net::FTPSSL/o && $haveit{'ftpssl'})
+	{
+		foreach $i (keys %args)
+		{
+			foreach $j (@supported_mods)
+			{
+				if ($i =~ /^${j}_/o)
+				{
+					if ($j eq 'ftpssl')
+					{
+						($t = $i) =~ s/^${j}_//;
+						$args{$t} = $args{$i};
+					}
+					delete $args{$i};
+				}
+			}
+		}
+		eval { require "Net/xFTP_FTPSSL.pm" };
+		if ($@)
+		{
+			warn "xFTP:Could not require Net::xFTP_FTPSSL.pm module($@)!";
+			return;
+		}
+		$xftp = Net::xFTP::FTPSSL::new_ftpssl("${class}::FTPSSL", $pkg, $host, %args);
+	}
+	elsif ($pkg =~ /Net::FTP/o && $haveit{'ftp'})
 	{
 		foreach $i (keys %args)
 		{
@@ -184,31 +209,6 @@ sub new
 			return;
 		}
 		$xftp = Net::xFTP::FSP::new_fsp("${class}::FSP", $pkg, $host, %args);
-	}
-	elsif ($pkg =~ /Net::FTPSSH/o && $haveit{'ftpssh'})
-	{
-		foreach $i (keys %args)
-		{
-			foreach $j (@supported_mods)
-			{
-				if ($i =~ /^${j}_/o)
-				{
-					if ($j eq 'ftpssh')
-					{
-						($t = $i) =~ s/^${j}_//;
-						$args{$t} = $args{$i};
-					}
-					delete $args{$i};
-				}
-			}
-		}
-		eval { require "Net/xFTP_FTPSSL.pm" };
-		if ($@)
-		{
-			warn "xFTP:Could not require Net::xFTP_FTPSSL.pm module($@)!";
-			return;
-		}
-		$xftp = Net::xFTP::FTPSSL::new_ftpssl("${class}::FTPSSL", $pkg, $host, %args);
 	}
 	elsif ($pkg =~ /Net::OpenSSH/o && $haveit{'openssh'})
 	{

@@ -26,7 +26,6 @@ sub new_ftpssl
 		my @loginargs = ($args{user});
 		push (@loginargs, $args{password})  if (defined $args{password});
 		push (@loginargs, $args{account})  if (defined $args{account});
-		$args{
 		if ($xftp->{xftp}->login(@loginargs))
 		{
 			my $cwd = $xftp->{xftp}->pwd();

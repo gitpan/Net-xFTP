@@ -35,3 +35,5 @@ Revision history for Net-xFTP
         Added support for protocols:  Net::SFTP::Foreign, Net::OpenSSH,
         and Net::FSP!
 0.4     Added support for Net::FTPSSL protocol.
+0.41    Fixed bugs that caused FTPSSL protocol to silently use FTP protocol 
+        instead.  This addresses bug#58210.
