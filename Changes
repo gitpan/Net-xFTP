@@ -37,3 +37,5 @@ Revision history for Net-xFTP
 0.4     Added support for Net::FTPSSL protocol.
 0.41    Fixed bugs that caused FTPSSL protocol to silently use FTP protocol 
         instead.  This addresses bug#58210.
+0.42	Fix bug in xFTP_SSH2 that prevented "puts" (line 403 - chg put() to scp_put() - caught by me.
+

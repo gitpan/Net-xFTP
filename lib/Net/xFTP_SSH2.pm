@@ -400,7 +400,7 @@ sub put    #(LOCAL => REMOTE) SFTP returns OK=1 on SUCCESS.
 	}
 	else
 	{
-		eval { $ok = $self->{xftp}->put(@args) };
+		eval { $ok = $self->{xftp}->scp_put(@args) };
 		$self->{xftp_lastmsg} = $@  if ($@);
 	}
 	return $ok ? 1 : undef;
