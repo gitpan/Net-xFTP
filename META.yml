@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Net-xFTP
-version:             0.42
+version:             0.43
 abstract:            Common wrapper functions for use with either Net::FTP or Net::xFTP.
 license:             ~
 author:              

@@ -31,7 +31,7 @@ eval 'use Net::OpenSSH; use IO::Pty; $haveit{"openssh"} = 1; 1';
 eval 'use Net::FSP; $haveit{"fsp"} = 1; 1';
 eval 'use Net::FTPSSL; $haveit{"ftpssl"} = 1; 1';
 
-our $VERSION = '0.42';
+our $VERSION = '0.43';
 
 sub new
 {
@@ -302,7 +302,7 @@ sub haveModule
 sub haveModules
 {
 	return { 'Net::FTP' => $haveit{'ftp'}, 'Net::SFTP' => $haveit{'sftp'},
-			'Net::SSH2' => $haveit{'ssh2'}, 'Net::SFTP2::Foreign' => $haveit{'foreign'},
+			'Net::SSH2' => $haveit{'ssh2'}, 'Net::SFTP::Foreign' => $haveit{'foreign'},
 			'Net::OpenSSH' => $haveit{'openssh'} };
 }
 

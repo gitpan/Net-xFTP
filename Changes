@@ -37,5 +37,10 @@ Revision history for Net-xFTP
 0.4     Added support for Net::FTPSSL protocol.
 0.41    Fixed bugs that caused FTPSSL protocol to silently use FTP protocol 
         instead.  This addresses bug#58210.
-0.42	Fix bug in xFTP_SSH2 that prevented "puts" (line 403 - chg put() to scp_put() - caught by me.
-
+0.42    Fix bug in xFTP_SSH2 that prevented "puts" (line 403 - chg put() 
+        to scp_put() - caught by me.
+0.43    Fix type bug in xFTP.pm affecting Net::SFTP::Foreign (had it as 
+        "Net::SFTP2::Foreign at line 305.  Caught by Paul Findlay, Thanks, Paul!
+        Also fixed formatting bug in the dir() function and added 
+        login timeout handler (sig(alarm)) and new option "login_timeout" (sec) - 
+        default is 30 seconds (caught by me).

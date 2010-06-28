@@ -22,8 +22,16 @@ sub new_foreign
 	delete($args{'warn'})  if (defined $args{'warn'});
 	my $saveEnvHome = $ENV{HOME};
 #	$ENV{HOME} = $xftp_args{home}  if ($xftp_args{home});
-	eval { $xftp->{xftp} = Net::SFTP::Foreign->new($host, %args); };
-	$xftp->{xftp_lastmsg} = $@  if ($@);
+	$SIG{ALRM} = sub { die "timeout" };
+	eval
+	{
+		alarm(defined($args{'login_timeout'}) ? $args{'login_timeout'} : 25);
+		$xftp->{xftp} = Net::SFTP::Foreign->new($host, %args);
+	};
+	my $at = $@;
+	$xftp->{xftp_lastmsg} = $at  if ($at);
+	alarm(0);
+	return undef  if ($at =~ /timeout/io);
 #	$ENV{HOME} = $saveEnvHome || '';
 	if ($xftp->{xftp})
 	{
@@ -231,7 +239,7 @@ sub dir
 		@tm = localtime($i->{a}->mtime);
 		$permStr = &getPermStr($i->{a}->{perm});
 		$_ = sprintf "%10s %s %s %8s %4d-%2.2d-%2.2d %2.2d:%2.2d %s\n", 
-				$permStr, $i->{a}->uid||'', $i->{a}->gid||'', $i->{a}->{size}, 
+				$permStr, $i->{a}->uid||'-unknown-', $i->{a}->gid||'-unknown-', $i->{a}->{size}||'0', 
 				$tm[5]+1900, $tm[4]+1, $tm[3], $tm[2], $tm[1], $t;
 		push (@dirlist, $_);
 	}
