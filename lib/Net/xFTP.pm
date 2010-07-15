@@ -31,7 +31,7 @@ eval 'use Net::OpenSSH; use IO::Pty; $haveit{"openssh"} = 1; 1';
 eval 'use Net::FSP; $haveit{"fsp"} = 1; 1';
 eval 'use Net::FTPSSL; $haveit{"ftpssl"} = 1; 1';
 
-our $VERSION = '0.43';
+our $VERSION = '0.44';
 
 sub new
 {
@@ -63,7 +63,7 @@ sub new
 		{
 			foreach $j (@supported_mods)
 			{
-				if ($i =~ /^${j}_/o)
+				if ($i =~ /^${j}\_/)
 				{
 					if ($j eq 'ftpssl')
 					{
@@ -88,9 +88,7 @@ sub new
 		{
 			foreach $j (@supported_mods)
 			{
-#				next  if ($j eq 'ftp');
-#				delete $args{$i}  if ($i =~ /^${j}_/o)   #REMOVE ALL ARGS NOT PREFIXED WITH 'ftp_'
-				if ($i =~ /^${j}_/o)
+				if ($i =~ /^${j}\_/)
 				{
 					if ($j eq 'ftp')
 					{
@@ -115,7 +113,7 @@ sub new
 		{
 			foreach $j (@supported_mods)
 			{
-				if ($i =~ /^${j}_/o)
+				if ($i =~ /^${j}\_/)
 				{
 					if ($j eq 'foreign')
 					{
@@ -140,7 +138,7 @@ sub new
 		{
 			foreach $j (@supported_mods)
 			{
-				if ($i =~ /^${j}_/o)
+				if ($i =~ /^${j}\_/)
 				{
 					if ($j eq 'ssh2')
 					{
@@ -165,7 +163,7 @@ sub new
 		{
 			foreach $j (@supported_mods)
 			{
-				if ($i =~ /^${j}_/o)
+				if ($i =~ /^${j}\_/)
 				{
 					if ($j eq 'sftp')
 					{
@@ -191,7 +189,7 @@ sub new
 		{
 			foreach $j (@supported_mods)
 			{
-				if ($i =~ /^${j}_/o)
+				if ($i =~ /^${j}\_/)
 				{
 					if ($j eq 'fsp')
 					{
@@ -216,9 +214,7 @@ sub new
 		{
 			foreach $j (@supported_mods)
 			{
-#				next  if ($j eq 'openssh');
-#				delete $args{$i}  if ($i =~ /^${j}_/o)   #REMOVE ALL ARGS NOT PREFIXED WITH 'ftp_'
-				if ($i =~ /^${j}_/o)
+				if ($i =~ /^${j}\_/)
 				{
 					if ($j eq 'openssh')
 					{
@@ -243,7 +239,7 @@ sub new
 		{
 			foreach $j (@supported_mods)
 			{
-				if ($i =~ /^${j}_/o)
+				if ($i =~ /^${j}\_/)
 				{
 					if ($j eq 'local')
 					{

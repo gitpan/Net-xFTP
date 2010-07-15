@@ -44,3 +44,5 @@ Revision history for Net-xFTP
         Also fixed formatting bug in the dir() function and added 
         login timeout handler (sig(alarm)) and new option "login_timeout" (sec) - 
         default is 30 seconds (caught by me).
+0.44    Fix bug that prevented module-specific arguments from being passed 
+        directly to the module.  Caught by Paul Findlay, Thanks again, Paul.
