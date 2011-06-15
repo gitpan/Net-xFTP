@@ -1,16 +1,17 @@
 Net-xFTP
 
 Net::xFTP is a wrapper class to combine common functions of Net::FTP, 
-Net::SSH2, and Net::SFTP into a single set of functions allowing one to 
+Net::SSH2, and Net::SFTP, and now Net::FTPSSL, Net::FSP, Net::SFTP::Foreign, 
+and Net::OpenSSH all into a single set of functions allowing one to 
 switch seemlessly between the two without having to make non-trivial 
-code changes.  Only functionality common to both protocols has been 
+code changes.  Only functionality common to all protocols has been 
 implemented here with the intent and invitation to add more functions 
-and features and maybe other *FTP-ish modules in the future.
-
-This module is a new work in progress - patches and suggestions are most 
-welcome!  The methods have been tested and seem to work properly for normal 
-cases.  Work is also underway to incorporate Net::xFTP into ptkftp 
-which will essentially wrap a Perl/Tk gui around Net::xFTP.
+and features and maybe other *FTP-ish modules in the future.  The module has 
+also been re-implemented into a modular fashion allowing for the easy 
+addition of other protocols in the future.  The methods have been tested 
+and seem to work properly for normal cases.  Two Perl/Tk GUI applications 
+currently exist as wrappers around Net::xFTP:  ptkftp (file-transfer gui) 
+and jfm3 (graphical file-manager).
 
 PURPOSE
 

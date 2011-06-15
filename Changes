@@ -46,3 +46,11 @@ Revision history for Net-xFTP
         default is 30 seconds (caught by me).
 0.44    Fix bug that prevented module-specific arguments from being passed 
         directly to the module.  Caught by Paul Findlay, Thanks again, Paul.
+0.44b1	 Fix FTPSSL mkdir() to actually implement recursion, fix FTPSSL dir 
+	  & ls functions to be specific to this module (FTPSSL uses different 
+	  names for them and does not implement recursion in mkdir.  These 
+	  address CPAN bug#63290. Thanks Kate Yoak for the catch & patch!
+	  Incorporated minor change to Foreign and removed depreciated set_status 
+	  call from FTP.
+0.45    Incorporate 0.44b1 changes into an actual release.  This should address 
+	  bugs 63290 & 68801.

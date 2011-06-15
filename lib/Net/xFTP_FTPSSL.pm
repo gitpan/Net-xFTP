@@ -140,7 +140,7 @@ sub ls
 	my $path = shift || '';
 	my $showall = shift || 0;
 	my @dirlist;
-	@dirlist = $self->{xftp}->ls($path||'.');
+	@dirlist = $self->{xftp}->nlst($path||'.');
 	return  unless (defined $dirlist[0]);     #ADDED 20070613 TO PREVENT WARNING.
 	shift (@dirlist)  if ($dirlist[0] =~ /^total \d/o);  #REMOVE TOTAL LINE!
 	my $i = 0;
@@ -177,7 +177,7 @@ sub dir
 	my $path = shift || '';
 	my $showall = shift || 0;
 	my @dirlist;
-	@dirlist = $self->{xftp}->dir($path||'.');
+	@dirlist = $self->{xftp}->list($path||'.');
 	return  unless (defined $dirlist[0]);     #ADDED 20070613 TO PREVENT WARNING.
 	shift (@dirlist)  if ($dirlist[0] =~ /^total \d/o);  #REMOVE TOTAL LINE!
 	my $i = 0;
@@ -296,8 +296,47 @@ sub mkdir
 
 	my @pathStack;
 	my $ok = '';
-	eval { $ok = $self->{xftp}->mkdir($path, $tryRecursion) };
-	$self->{xftp_lastmsg} = $@  if ($@);
+	my $orgPath = $path;
+	my $didRecursion = 0;
+	$path = $self->{cwd} . '/' . $path  unless ($path =~ m#^(?:[a-zA-Z]\:|\/)#o);
+	while ($path)
+	{
+		$path =~ s#[^\/\\]+$##o;
+		$path =~ s#[\/\\]$##o;
+		$path = '/'  unless ($path);
+		last  if ($self->isadir($path));
+		if ($tryRecursion)
+		{
+			push (@pathStack, $path);
+			$didRecursion = 1;
+			last  if ($path eq '/');
+		}
+		else
+		{
+			$self->{xftp_lastmsg} = "mkdir:Could not create path($orgPath) since parent not directory!";
+			return undef;
+		}
+	}
+	if ($didRecursion)
+	{
+		while (@pathStack)
+		{
+			$path = pop @pathStack;
+			eval { $ok = $self->{xftp}->mkdir($path) };
+			if ($@ || !$ok)
+			{
+				$self->{xftp_lastmsg} = $@ || $!;
+				return undef;
+			}
+			next;
+		}
+	}
+	eval { $ok = $self->{xftp}->mkdir($orgPath) };
+	if ($@ || !$ok)
+	{
+		$self->{xftp_lastmsg} = $@ || $!;
+		return undef;
+	}
 	return $ok ? 1 : undef;
 }
 
@@ -366,7 +405,6 @@ sub chmod
 	{
 		$@ = 'Server does not support chmod!';
 		$self->{xftp_lastmsg} = $@;
-		$self->{xftp}->set_status(1, $@);
 	}
 	$ok = $self->{xftp}->site('CHMOD', $permissions, $path);
 	return ($ok == 2) ? 1 : undef;

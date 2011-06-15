@@ -366,7 +366,7 @@ sub chmod
 	{
 		$@ = 'Server does not support chmod!';
 		$self->{xftp_lastmsg} = $@;
-		$self->{xftp}->set_status(1, $@);
+#		$self->{xftp}->set_status(1, $@);
 	}
 	$ok = $self->{xftp}->site('CHMOD', $permissions, $path);
 	return ($ok == 2) ? 1 : undef;

@@ -239,7 +239,9 @@ sub dir
 		@tm = localtime($i->{a}->mtime);
 		$permStr = &getPermStr($i->{a}->{perm});
 		$_ = sprintf "%10s %s %s %8s %4d-%2.2d-%2.2d %2.2d:%2.2d %s\n", 
-				$permStr, $i->{a}->uid||'-unknown-', $i->{a}->gid||'-unknown-', $i->{a}->{size}||'0', 
+				$permStr, (($i->{a}->uid =~ /\S/o) ? $i->{a}->uid : '-unknown-'),
+				(($i->{a}->gid =~ /\S/o) ? $i->{a}->gid : '-unknown-'),
+				$i->{a}->{size}||'0', 
 				$tm[5]+1900, $tm[4]+1, $tm[3], $tm[2], $tm[1], $t;
 		push (@dirlist, $_);
 	}
