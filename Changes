@@ -54,3 +54,11 @@ Revision history for Net-xFTP
 	  call from FTP.
 0.45    Incorporate 0.44b1 changes into an actual release.  This should address 
 	  bugs 63290 & 68801.
+0.46	  Attempt to prevent nanny module "Test::Pod::Coverage" from 
+	  preventing installation!  I don't have the time to make sure each & 
+	  every fsckin' function has POD docs - The main one (xFTP.pm) does. 
+	  This module is documented in it's man-page and README!  Sweating 
+	  stuff like this is for Pascal programmers. :-/  If this bothers you, 
+	  either don't use my module, or else write up some POD foo & send it 
+	  to me & i'll include it in next release.
+

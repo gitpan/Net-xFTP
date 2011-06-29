@@ -4,7 +4,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile(
     NAME                => 'Net::xFTP',
-    AUTHOR              => 'Jim Turner <turnerjw@wwol.com>',
+    AUTHOR              => 'Jim Turner <turnerjw784@yahoo.com>',
     VERSION_FROM        => 'lib/Net/xFTP.pm',
     ABSTRACT_FROM       => 'lib/Net/xFTP.pm',
     PL_FILES            => {},

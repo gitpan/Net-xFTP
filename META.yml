@@ -1,10 +1,10 @@
 --- #YAML:1.0
 name:                Net-xFTP
-version:             0.45
+version:             0.46
 abstract:            Common wrapper functions for use with either Net::FTP or Net::xFTP.
 license:             ~
 author:              
-    - Jim Turner <turnerjw@wwol.com>
+    - Jim Turner <turnerjw784@yahoo.com>
 generated_by:        ExtUtils::MakeMaker version 6.42
 distribution_type:   module
 requires:     
